@@ -2,6 +2,8 @@
 
 20 classic machine-learning and CS algorithms, each implemented **from scratch in NumPy** (no scikit-learn, no PyTorch in the core algorithm) and paired with an interactive **Streamlit + Plotly** step-by-step walkthrough — all in one categorized multipage app.
 
+**Live demo: [algorithm-visualizers.streamlit.app](https://algorithm-visualizers.streamlit.app/)**
+
 This repo replaces 20 previously-standalone visualiser repos. Each algorithm keeps its own self-contained package (`<algo>/{algorithm,data,visualize}.py`); only the Streamlit entry point was merged into a single app with one shared home page and navigation.
 
 ## Quick start
