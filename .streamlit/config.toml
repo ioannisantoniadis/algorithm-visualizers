@@ -1,0 +1,17 @@
+[theme]
+base = "light"
+primaryColor = "#6366f1"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f8f8fb"
+textColor = "#18181b"
+borderColor = "#e4e4e7"
+baseRadius = "medium"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+chartCategoricalColors = ["#6366f1", "#14b8a6", "#f59e0b", "#f43f5e", "#0ea5e9", "#8b5cf6", "#84cc16", "#fb923c", "#06b6d4", "#ec4899"]
+
+[theme.sidebar]
+backgroundColor = "#f8f8fb"
+borderColor = "#e4e4e7"
+
+[client]
+toolbarMode = "minimal"
