@@ -25,6 +25,8 @@ from __future__ import annotations
 import numpy as np
 import plotly.graph_objects as go
 
+from common.theme import base_layout
+
 from .algorithm import ACTION_ARROWS, Snapshot, episode_summaries, greedy_action, rollout_policy_path
 from .data import Cell, GridWorld
 
@@ -32,7 +34,6 @@ from .data import Cell, GridWorld
 # theme.chartCategoricalColors so every chart matches the app chrome.
 _PALETTE = ["#6366f1", "#14b8a6", "#f59e0b", "#f43f5e", "#0ea5e9",
             "#8b5cf6", "#84cc16", "#fb923c", "#06b6d4", "#ec4899"]
-_FONT_FAMILY = "Inter, -apple-system, Segoe UI, sans-serif"
 
 # Cell-kind colours are domain-semantic (danger = red, goal = green, cliff =
 # near-black, etc.) rather than an arbitrary categorical series, so they stay
@@ -155,20 +156,17 @@ def _action_line(state: Cell, next_state: Cell, slipped: bool) -> go.Scatter:
     )
 
 
-def _grid_layout(rows: int, cols: int, title: str) -> go.Layout:
-    return go.Layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text=title, x=0.5, xanchor="center", font=dict(size=14, color="#18181b")),
+def _grid_layout(rows: int, cols: int, title: str | None) -> go.Layout:
+    return base_layout(
+        title,
+        height=460,
+        showlegend=False,
+        margin=dict(l=10, r=10, t=45, b=10),
         xaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-0.5, cols - 0.5]),
         yaxis=dict(
             showgrid=False, zeroline=False, visible=False,
             range=[rows - 0.5, -0.5], scaleanchor="x",
         ),
-        margin=dict(l=10, r=10, t=45, b=10),
-        height=460,
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-        showlegend=False,
     )
 
 
@@ -205,7 +203,8 @@ def make_static_figure(snap: Snapshot, background: str = "kind") -> go.Figure:
         action_edge = (snap.state, snap.next_state, snap.slipped)
 
     traces = _frame_traces(grid, snap.q_table, agent_at, background, action_edge)
-    return go.Figure(data=traces, layout=_grid_layout(grid.rows, grid.cols, snap.title))
+    # per-frame title dropped — already shown in the page's progress bar
+    return go.Figure(data=traces, layout=_grid_layout(grid.rows, grid.cols, None))
 
 
 def build_figure(snapshots: list[Snapshot], background: str = "kind") -> go.Figure:
@@ -233,7 +232,7 @@ def build_figure(snapshots: list[Snapshot], background: str = "kind") -> go.Figu
             )
         )
 
-    fig = go.Figure(data=frames[0].data, frames=frames, layout=_grid_layout(grid.rows, grid.cols, shown[0].title))
+    fig = go.Figure(data=frames[0].data, frames=frames, layout=_grid_layout(grid.rows, grid.cols, None))
     fig.update_layout(
         sliders=[dict(
             active=0, currentvalue=dict(prefix="Frame: ", font=dict(size=13)),
@@ -275,20 +274,13 @@ def _rolling_average(values: np.ndarray, window: int) -> tuple[np.ndarray, np.nd
     return x, avg
 
 
-def _reward_axis_style() -> dict:
-    return dict(
-        showgrid=True, gridcolor="#eef0f4", gridwidth=1,
-        zeroline=False, showline=True, linecolor="#e4e4e7", linewidth=1,
-    )
-
-
 def make_reward_figure(snapshots: list[Snapshot], name: str = "", color: str = _PALETTE[0]) -> go.Figure:
     """Return-per-episode line plus a running average, so noisy episode-to-
     episode reward is easy to read as an overall learning trend."""
     eps, returns, _lengths, _epsilons = episode_summaries(snapshots)
     fig = go.Figure()
     if len(eps) == 0:
-        fig.update_layout(height=280, margin=dict(l=40, r=10, t=30, b=35))
+        fig.layout = base_layout(None, height=280, showlegend=False, margin=dict(l=40, r=10, t=30, b=35))
         return fig
 
     window = max(2, min(10, len(eps) // 3 or 1))
@@ -304,15 +296,12 @@ def make_reward_figure(snapshots: list[Snapshot], name: str = "", color: str = _
             name=f"{name} running avg (w={window})" if name else f"Running avg (w={window})",
             line=dict(color=color, width=2.5),
         ))
-    fig.update_layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        height=280, margin=dict(l=45, r=10, t=30, b=35),
-        xaxis=dict(**_reward_axis_style(), title="Episode"),
-        yaxis=dict(**_reward_axis_style(), title="Total reward"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0,
-                    bgcolor="rgba(255,255,255,0.9)", bordercolor="#e4e4e7", borderwidth=1,
-                    font=dict(size=12)),
-        plot_bgcolor="#fbfbfd", paper_bgcolor="rgba(0,0,0,0)",
+    fig.layout = base_layout(
+        None,
+        height=280,
+        margin=dict(l=45, r=10, t=30),
+        xaxis=dict(title="Episode"),
+        yaxis=dict(title="Total reward"),
     )
     return fig
 
@@ -338,14 +327,11 @@ def make_compare_reward_figure(
                 x=run_x, y=run_y, mode="lines", name=f"{name} (running avg)",
                 line=dict(color=color, width=2.5),
             ))
-    fig.update_layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        height=300, margin=dict(l=45, r=10, t=30, b=35),
-        xaxis=dict(**_reward_axis_style(), title="Episode"),
-        yaxis=dict(**_reward_axis_style(), title="Total reward"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0,
-                    bgcolor="rgba(255,255,255,0.9)", bordercolor="#e4e4e7", borderwidth=1,
-                    font=dict(size=12)),
-        plot_bgcolor="#fbfbfd", paper_bgcolor="rgba(0,0,0,0)",
+    fig.layout = base_layout(
+        None,
+        height=300,
+        margin=dict(l=45, r=10, t=30),
+        xaxis=dict(title="Episode"),
+        yaxis=dict(title="Total reward"),
     )
     return fig

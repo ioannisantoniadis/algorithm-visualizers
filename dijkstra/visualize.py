@@ -23,6 +23,8 @@ from __future__ import annotations
 import numpy as np
 import plotly.graph_objects as go
 
+from common.theme import base_layout
+
 from .algorithm import Cell, Snapshot
 
 # Shared portfolio palette — kept in sync with .streamlit/config.toml's
@@ -40,7 +42,6 @@ _START_COLOR = "#22c55e"     # semantic green — kept off-palette for clarity
 _GOAL_COLOR = "#8b5cf6"      # palette violet — distinct from the rose "current" marker
 
 _TERRAIN_SCALE = "YlOrBr"
-_FONT_FAMILY = "Inter, -apple-system, Segoe UI, sans-serif"
 
 
 def _solid_layer(mask: np.ndarray, color: str) -> go.Heatmap:
@@ -95,21 +96,16 @@ def _base_layers(grid_cost: np.ndarray) -> list[go.Heatmap]:
     return [_terrain_layer(grid_cost), _wall_layer(grid_cost)]
 
 
-def _grid_layout(rows: int, cols: int, title: str) -> go.Layout:
-    return go.Layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text=title, x=0.5, xanchor="center",
-                   font=dict(size=15, color="#18181b")),
+def _grid_layout(rows: int, cols: int, title: str | None) -> go.Layout:
+    return base_layout(
+        title,
+        showlegend=False,
+        margin=dict(l=10, r=10, t=50, b=10),
         xaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-0.5, cols - 0.5]),
         yaxis=dict(
             showgrid=False, zeroline=False, visible=False,
             range=[rows - 0.5, -0.5], scaleanchor="x",
         ),
-        margin=dict(l=10, r=10, t=50, b=10),
-        height=560,
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-        showlegend=False,
     )
 
 
@@ -204,7 +200,7 @@ def build_figure(snapshots: list[Snapshot]) -> go.Figure:
     fig = go.Figure(
         data=frames[0].data,
         frames=frames,
-        layout=_grid_layout(rows, cols, snapshots[0].title),
+        layout=_grid_layout(rows, cols, None),  # per-frame title shown via go.Frame layout instead
     )
     fig.update_layout(
         sliders=[
@@ -247,7 +243,8 @@ def build_figure(snapshots: list[Snapshot]) -> go.Figure:
 def make_static_figure(snap: Snapshot) -> go.Figure:
     """Single non-animated frame — what app.py renders on every step."""
     rows, cols = snap.grid_cost.shape
-    return go.Figure(data=_frame_traces(snap), layout=_grid_layout(rows, cols, snap.title))
+    # per-frame title dropped — already shown in the page's progress bar
+    return go.Figure(data=_frame_traces(snap), layout=_grid_layout(rows, cols, None))
 
 
 def make_editor_figure(grid_cost: np.ndarray, start: Cell, goal: Cell) -> go.Figure:

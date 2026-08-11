@@ -25,6 +25,8 @@ from __future__ import annotations
 import numpy as np
 import plotly.graph_objects as go
 
+from common.theme import base_layout
+
 from .algorithm import Snapshot
 from .data import Edge
 
@@ -32,7 +34,6 @@ from .data import Edge
 # theme.chartCategoricalColors so every chart matches the app chrome.
 _PALETTE = ["#6366f1", "#14b8a6", "#f59e0b", "#f43f5e", "#0ea5e9",
             "#8b5cf6", "#84cc16", "#fb923c", "#06b6d4", "#ec4899"]
-_FONT_FAMILY = "Inter, -apple-system, Segoe UI, sans-serif"
 
 _BG_EDGE_COLOR = "#c9ccd1"
 _MST_COLOR = "#14b8a6"           # teal — accepted / grown into the tree
@@ -112,7 +113,7 @@ def _node_trace(
     )
 
 
-def _graph_layout(positions: np.ndarray, title: str) -> go.Layout:
+def _graph_layout(positions: np.ndarray, title: str | None) -> go.Layout:
     """Shared layout for the node-link diagrams.
 
     The axes stay hidden (node positions are a schematic layout, not
@@ -123,21 +124,11 @@ def _graph_layout(positions: np.ndarray, title: str) -> go.Layout:
     pad = 1.0
     xr = [float(positions[:, 0].min()) - pad, float(positions[:, 0].max()) + pad]
     yr = [float(positions[:, 1].min()) - pad, float(positions[:, 1].max()) + pad]
-    return go.Layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text=title, x=0.5, xanchor="center", font=dict(size=15, color="#18181b")),
+    return base_layout(
+        title,
+        margin=dict(l=10, r=10, t=50, b=10),
         xaxis=dict(showgrid=False, zeroline=False, visible=False, range=xr),
         yaxis=dict(showgrid=False, zeroline=False, visible=False, range=yr, scaleanchor="x"),
-        margin=dict(l=10, r=10, t=50, b=10),
-        height=560,
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-        showlegend=True,
-        legend=dict(
-            orientation="h", y=-0.04, x=0.5, xanchor="center",
-            bgcolor="rgba(255,255,255,0.9)", bordercolor="#e4e4e7", borderwidth=1,
-            font=dict(size=12),
-        ),
     )
 
 
@@ -247,7 +238,7 @@ def build_figure(snapshots: list[Snapshot]) -> go.Figure:
     fig = go.Figure(
         data=frames[0].data,
         frames=frames,
-        layout=_graph_layout(snapshots[0].positions, snapshots[0].title),
+        layout=_graph_layout(snapshots[0].positions, None),  # per-frame title shown via go.Frame layout instead
     )
     fig.update_layout(
         sliders=[
@@ -289,7 +280,8 @@ def build_figure(snapshots: list[Snapshot]) -> go.Figure:
 
 def make_static_figure(snap: Snapshot) -> go.Figure:
     """Single non-animated frame — what app.py renders on every step."""
-    return go.Figure(data=_frame_traces(snap), layout=_graph_layout(snap.positions, snap.title))
+    # per-frame title dropped — already shown in the page's progress bar
+    return go.Figure(data=_frame_traces(snap), layout=_graph_layout(snap.positions, None))
 
 
 def make_editor_figure(positions: np.ndarray, edges: list[Edge]) -> go.Figure:
@@ -324,17 +316,12 @@ def make_editor_figure(positions: np.ndarray, edges: list[Edge]) -> go.Figure:
         )
     )
 
-    layout = go.Layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text="Click to add a node · click a node to remove it", x=0.5,
-                    xanchor="center", font=dict(size=15, color="#18181b")),
+    layout = base_layout(
+        "Click to add a node · click a node to remove it",
+        showlegend=False,
+        margin=dict(l=10, r=10, t=50, b=10),
         xaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-0.5, 10.5]),
         yaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-0.5, 10.5], scaleanchor="x"),
-        margin=dict(l=10, r=10, t=50, b=10),
-        height=560,
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-        showlegend=False,
-        clickmode="event+select",
     )
+    layout.clickmode = "event+select"
     return go.Figure(data=traces, layout=layout)

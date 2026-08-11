@@ -6,14 +6,11 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from common.theme import PALETTE as _PALETTE
+from common.theme import apply_theme
 from .algorithm import Snapshot
 
-# Shared portfolio palette — kept in sync with .streamlit/config.toml's
-# theme.chartCategoricalColors so every chart matches the app chrome.
-_PALETTE = ["#6366f1", "#14b8a6", "#f59e0b", "#f43f5e", "#0ea5e9",
-            "#8b5cf6", "#84cc16", "#fb923c", "#06b6d4", "#ec4899"]
 _NOISE_COLOUR = "#a1a1aa"
-_FONT_FAMILY = "Inter, -apple-system, Segoe UI, sans-serif"
 
 
 def _colours(labels: np.ndarray) -> list[str]:
@@ -69,17 +66,16 @@ def _masked_latent_scatter(
     )
 
 
-def _snapshot_title(snap: Snapshot) -> str:
-    ph = "Early exaggeration" if snap.phase == "early" else "Main optimisation"
-    return f"t-SNE — {ph} · iteration {snap.iteration} · KL ≈ {snap.kl_divergence:.4f}"
-
-
 def make_figure(
     snap: Snapshot,
     *,
     frame_index: int | None = None,
     frame_total: int | None = None,
 ) -> go.Figure:
+    """`frame_index`/`frame_total` are accepted for call-site compatibility
+    with apps/tsne.py but no longer drive a chart title (dropped below) —
+    the page's own progress bar and metrics row (phase, iteration, KL,
+    perplexity) already show every value that title used to repeat."""
     colours = _colours(snap.labels)
     fig = make_subplots(
         rows=1,
@@ -135,27 +131,5 @@ def make_figure(
     fig.update_xaxes(scaleanchor="y", scaleratio=1, row=1, col=1)
     fig.update_xaxes(scaleanchor="y2", scaleratio=1, row=1, col=2)
 
-    title = _snapshot_title(snap)
-    if frame_index is not None and frame_total is not None:
-        title += f"<br><sup>Frame {frame_index + 1}/{frame_total} · effective perplexity = {snap.perplexity:.1f}</sup>"
-
-    fig.update_layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text=title, x=0.5, font=dict(size=14, color="#18181b")),
-        legend=dict(
-            orientation="h",
-            yanchor="top",
-            y=-0.12,
-            x=0.5,
-            xanchor="center",
-            font=dict(size=12, color="#3f3f46"),
-            bgcolor="rgba(255,255,255,0.9)",
-            bordercolor="#e4e4e7",
-            borderwidth=1,
-        ),
-        margin=dict(l=50, r=30, t=85, b=120),
-        height=580,
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-    )
+    apply_theme(fig, None, height=580, showlegend=True)
     return fig

@@ -33,6 +33,8 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from common.theme import apply_theme, base_layout
+
 from .algorithm import Snapshot
 
 # Shared portfolio palette — kept in sync with .streamlit/config.toml's
@@ -42,7 +44,6 @@ _PALETTE = ["#6366f1", "#14b8a6", "#f59e0b", "#f43f5e", "#0ea5e9",
 _CLASS_COLORS = _PALETTE  # up to len(_PALETTE) classes
 _TRAIN_ERR_COLOR = "#6366f1"   # indigo — training (resubstitution) error
 _OOB_ERR_COLOR = "#14b8a6"     # teal — out-of-bag (honest) error
-_FONT_FAMILY = "Inter, -apple-system, Segoe UI, sans-serif"
 
 
 def _colors(n_classes: int) -> list[str]:
@@ -124,18 +125,6 @@ _AXIS_STYLE = dict(
 )
 
 
-def _panel_layout(title: str, X: np.ndarray) -> dict:
-    pad = 0.8
-    return dict(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text=title, font=dict(size=13, color="#18181b")),
-        xaxis=dict(**_AXIS_STYLE, title="x₁",
-                   range=[float(X[:, 0].min()) - pad, float(X[:, 0].max()) + pad]),
-        yaxis=dict(**_AXIS_STYLE, title="x₂", scaleanchor="x",
-                   range=[float(X[:, 1].min()) - pad, float(X[:, 1].max()) + pad]),
-    )
-
-
 # ---------------------------------------------------------------------------
 # Two-panel figure: this tree | the ensemble so far
 # ---------------------------------------------------------------------------
@@ -171,16 +160,7 @@ def make_static_figure(snap: Snapshot, n_classes: int, grid_x: np.ndarray, grid_
     fig.update_yaxes(**_AXIS_STYLE, title="x₂", range=y_range, scaleanchor="x", col=1)
     fig.update_yaxes(**_AXIS_STYLE, title="x₂", range=y_range, scaleanchor="x2", col=2)
 
-    fig.update_layout(
-        height=460,
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        margin=dict(l=40, r=20, t=50, b=40),
-        legend=dict(orientation="h", y=-0.18, x=0.5, xanchor="center",
-                    bgcolor="rgba(255,255,255,0.9)", bordercolor="#e4e4e7",
-                    borderwidth=1, font=dict(size=12)),
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-    )
+    apply_theme(fig, height=460)
     for annotation in fig.layout.annotations:
         annotation.font = dict(size=13, color="#18181b")
     return fig
@@ -235,14 +215,14 @@ def make_error_figure(snapshots: list[Snapshot], current_idx: int) -> go.Figure:
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=xs, y=train_err, mode="lines+markers", name="Training error (resubstitution)",
+        x=xs, y=train_err, mode="lines+markers", name="Training error",
         line=dict(color=_TRAIN_ERR_COLOR, width=2), marker=dict(size=4),
     ))
     oob_xs = [x for x, e in zip(xs, oob_err) if e is not None]
     oob_ys = [e for e in oob_err if e is not None]
     if oob_ys:
         fig.add_trace(go.Scatter(
-            x=oob_xs, y=oob_ys, mode="lines+markers", name="Out-of-bag error",
+            x=oob_xs, y=oob_ys, mode="lines+markers", name="OOB error",
             line=dict(color=_OOB_ERR_COLOR, width=2), marker=dict(size=4),
         ))
 
@@ -259,17 +239,12 @@ def make_error_figure(snapshots: list[Snapshot], current_idx: int) -> go.Figure:
             showlegend=False,
         ))
 
-    fig.update_layout(
+    fig.layout = base_layout(
+        None,
         height=260,
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        margin=dict(l=45, r=15, t=25, b=35),
-        xaxis=dict(title="Trees in the forest", **_AXIS_STYLE),
-        yaxis=dict(title="Error rate", **_AXIS_STYLE, rangemode="tozero"),
-        legend=dict(orientation="h", y=1.18, x=0.5, xanchor="center",
-                    bgcolor="rgba(255,255,255,0.9)", bordercolor="#e4e4e7",
-                    borderwidth=1, font=dict(size=12)),
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=45, r=15, t=25),
+        xaxis=dict(title="Trees in the forest"),
+        yaxis=dict(title="Error rate", rangemode="tozero"),
     )
     return fig
 
@@ -287,14 +262,13 @@ def make_importance_figure(snap: Snapshot, feature_names: tuple[str, str] = ("x�
         text=[f"{v:.0%}" for v in values],
         textposition="outside",
     ))
-    fig.update_layout(
+    fig.layout = base_layout(
+        None,
         height=180,
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
+        showlegend=False,
         margin=dict(l=30, r=30, t=10, b=30),
-        xaxis=dict(title="Cumulative importance", range=[0, 1], **_AXIS_STYLE),
+        xaxis=dict(title="Cumulative importance", range=[0, 1]),
         yaxis=dict(title="", showgrid=False, zeroline=False),
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
     )
     return fig
 
@@ -307,7 +281,13 @@ def make_preview_figure(X: np.ndarray, y: np.ndarray) -> go.Figure:
     """Plain scatter of the training data before any tree is grown."""
     n_classes = int(y.max()) + 1
     traces = _point_traces(X, y, n_classes)
-    fig = go.Figure(data=traces, layout=go.Layout(**_panel_layout("Training data", X)))
-    fig.update_layout(height=460, plot_bgcolor="#fbfbfd", paper_bgcolor="rgba(0,0,0,0)",
-                       margin=dict(l=40, r=20, t=50, b=40))
-    return fig
+    pad = 0.8
+    layout = base_layout(
+        "Training data",
+        height=460,
+        margin=dict(l=40, r=20, t=50, b=40),
+        xaxis=dict(title="x₁", range=[float(X[:, 0].min()) - pad, float(X[:, 0].max()) + pad]),
+        yaxis=dict(title="x₂", scaleanchor="x",
+                   range=[float(X[:, 1].min()) - pad, float(X[:, 1].max()) + pad]),
+    )
+    return go.Figure(data=traces, layout=layout)

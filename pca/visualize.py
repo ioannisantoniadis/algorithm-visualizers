@@ -7,6 +7,7 @@ from __future__ import annotations
 import numpy as np
 import plotly.graph_objects as go
 
+from common.theme import base_layout, base_layout_3d
 from .algorithm import Snapshot
 
 # Shared portfolio palette — kept in sync with .streamlit/config.toml's
@@ -14,7 +15,6 @@ from .algorithm import Snapshot
 _PALETTE = ["#6366f1", "#14b8a6", "#f59e0b", "#f43f5e", "#0ea5e9",
             "#8b5cf6", "#84cc16", "#fb923c", "#06b6d4", "#ec4899"]
 _NOISE_COLOUR = "#a1a1aa"
-_FONT_FAMILY = "Inter, -apple-system, Segoe UI, sans-serif"
 
 # 95% Mahalanobis: χ² critical value at df = dimension
 _MAHAL_SQ: dict[int, float] = {2: 5.991, 3: 7.815}
@@ -57,30 +57,6 @@ def _axis_range_3d(*parts: np.ndarray, pad: float = 0.45) -> tuple[list[float], 
     return [c[0] - r, c[0] + r], [c[1] - r, c[1] + r], [c[2] - r, c[2] + r]
 
 
-def _base_layout_2d(title: str, xrange: list[float], yrange: list[float]) -> go.Layout:
-    axis_style = dict(
-        showgrid=True, gridcolor="#eef0f4", gridwidth=1,
-        zeroline=True, zerolinewidth=1, zerolinecolor="#d4d4d8",
-        showline=True, linecolor="#e4e4e7", linewidth=1,
-    )
-    return go.Layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text=title, x=0.5, xanchor="center",
-                   font=dict(size=15, color="#18181b")),
-        xaxis=dict(**axis_style, title="x₁", range=xrange, scaleratio=1),
-        yaxis=dict(**axis_style, title="x₂", range=yrange,
-                   scaleanchor="x", scaleratio=1),
-        legend=dict(
-            orientation="v", x=1.02, y=1, bgcolor="rgba(255,255,255,0.9)",
-            bordercolor="#e4e4e7", borderwidth=1, font=dict(size=12),
-        ),
-        margin=dict(l=50, r=160, t=60, b=50),
-        height=520,
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-    )
-
-
 def _scene_3d(xr, yr, zr) -> dict:
     axis_style = dict(
         gridcolor="#eef0f4", zerolinecolor="#d4d4d8",
@@ -92,22 +68,6 @@ def _scene_3d(xr, yr, zr) -> dict:
         zaxis=dict(**axis_style, title="x₃", range=zr),
         aspectmode="cube",
         camera=dict(eye=dict(x=1.55, y=1.35, z=1.15)),
-    )
-
-
-def _base_layout_3d(title: str, xr, yr, zr) -> go.Layout:
-    return go.Layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text=title, x=0.5, xanchor="center",
-                   font=dict(size=15, color="#18181b")),
-        scene=_scene_3d(xr, yr, zr),
-        legend=dict(
-            orientation="v", x=1.02, y=0.98, bgcolor="rgba(255,255,255,0.9)",
-            bordercolor="#e4e4e7", borderwidth=1, font=dict(size=12),
-        ),
-        margin=dict(l=0, r=140, t=60, b=0),
-        height=560,
-        paper_bgcolor="rgba(0,0,0,0)",
     )
 
 
@@ -287,11 +247,18 @@ def make_marginal_xy_figure(snap: Snapshot, labels: np.ndarray | None = None) ->
                 )
             )
 
-    fig.update_layout(_base_layout_2d(
+    fig.update_layout(base_layout(
         "Marginal (x₁, x₂) — x₃ is not shown",
-        xr, yr,
+        height=340,
+        xaxis=dict(
+            title="x₁", range=xr, scaleratio=1,
+            zeroline=True, zerolinewidth=1, zerolinecolor="#d4d4d8",
+        ),
+        yaxis=dict(
+            title="x₂", range=yr, scaleanchor="x", scaleratio=1,
+            zeroline=True, zerolinewidth=1, zerolinecolor="#d4d4d8",
+        ),
     ))
-    fig.update_layout(height=340)
     return fig
 
 
@@ -425,7 +392,18 @@ def make_static_figure_2d(snap: Snapshot, labels: np.ndarray | None = None) -> g
                 )
             )
 
-    fig.update_layout(_base_layout_2d(snap.title, xr, yr))
+    fig.update_layout(base_layout(
+        None,  # per-frame title, already shown in the page's progress bar
+        height=520,
+        xaxis=dict(
+            title="x₁", range=xr, scaleratio=1,
+            zeroline=True, zerolinewidth=1, zerolinecolor="#d4d4d8",
+        ),
+        yaxis=dict(
+            title="x₂", range=yr, scaleanchor="x", scaleratio=1,
+            zeroline=True, zerolinewidth=1, zerolinecolor="#d4d4d8",
+        ),
+    ))
     return fig
 
 
@@ -564,5 +542,8 @@ def make_static_figure_3d(snap: Snapshot, labels: np.ndarray | None = None) -> g
                 )
             )
 
-    fig.update_layout(_base_layout_3d(snap.title, xr, yr, zr))
+    fig.update_layout(base_layout_3d(
+        None,  # per-frame title, already shown in the page's progress bar
+        scene=_scene_3d(xr, yr, zr),
+    ))
     return fig

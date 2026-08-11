@@ -10,6 +10,7 @@ import time
 import numpy as np
 import streamlit as st
 
+from common.ui import about_section, params_rail
 from kalman.algorithm import fit
 from kalman.data import TRAJ_KEYS, TRAJ_NAMES, make_trajectory
 from kalman.visualize import make_comparison_figure, make_static_figure
@@ -21,12 +22,15 @@ def _k(name: str) -> str:
     return f"{NS}__{name}"
 
 
-# ---------------------------------------------------------------------------
-# Sidebar — parameters
-# ---------------------------------------------------------------------------
-st.sidebar.markdown("##### ⚙️ PARAMETERS")
+st.title("Kalman Filter — Predict/Update Visualiser")
+caption_slot = st.empty()
 
-with st.sidebar.container(border=True):
+col_params, col_main = st.columns([1, 3])
+
+# ---------------------------------------------------------------------------
+# Params rail
+# ---------------------------------------------------------------------------
+with params_rail(col_params, "Trajectory"):
     traj_name = st.selectbox(
         "Trajectory",
         options=TRAJ_NAMES,
@@ -41,9 +45,7 @@ with st.sidebar.container(border=True):
     n_steps = st.slider("Number of time steps", min_value=20, max_value=150, value=60, step=5, key=_k("n_steps"))
     seed = st.number_input("Random seed", min_value=0, max_value=9999, value=42, step=1, key=_k("seed"))
 
-st.sidebar.markdown("##### FILTER TUNING")
-
-with st.sidebar.container(border=True):
+with params_rail(col_params, "Filter tuning"):
     q = st.slider(
         "Process noise — Q (std)",
         min_value=0.01, max_value=3.0, value=0.15, step=0.01,
@@ -63,31 +65,32 @@ with st.sidebar.container(border=True):
 
     regenerate = st.button("🔄 Re-generate trajectory", use_container_width=True, key=_k("regen"))
 
-_TRAJ_NOTES = {
-    "linear": "**Constant velocity** — the scenario the model was built for. "
-              "With a sensible Q the estimate should track closely and smooth "
-              "out most of the sensor noise.",
-    "circular": "**Circular orbit** — a constant-velocity model has no notion "
-                "of curvature, so the filter is always slightly behind the turn. "
-                "Raise Q to let it keep up; watch the ellipse stay small if Q is "
-                "too low even as the estimate lags.",
-    "weave": "**Sine weave** — periodic direction changes stress-test the "
-             "Q trade-off: too smooth and it cuts every corner, too reactive "
-             "and it chases sensor noise instead of the pattern.",
-    "maneuver": "**Maneuvering turns** — abrupt velocity changes are the "
-                "hardest case for a constant-velocity model. Watch the "
-                "uncertainty ellipse balloon right after each turn.",
-}
-st.sidebar.info(_TRAJ_NOTES[traj_key])
+with col_params:
+    _TRAJ_NOTES = {
+        "linear": "**Constant velocity** — the scenario the model was built for. "
+                  "With a sensible Q the estimate should track closely and smooth "
+                  "out most of the sensor noise.",
+        "circular": "**Circular orbit** — a constant-velocity model has no notion "
+                    "of curvature, so the filter is always slightly behind the turn. "
+                    "Raise Q to let it keep up; watch the ellipse stay small if Q is "
+                    "too low even as the estimate lags.",
+        "weave": "**Sine weave** — periodic direction changes stress-test the "
+                 "Q trade-off: too smooth and it cuts every corner, too reactive "
+                 "and it chases sensor noise instead of the pattern.",
+        "maneuver": "**Maneuvering turns** — abrupt velocity changes are the "
+                    "hardest case for a constant-velocity model. Watch the "
+                    "uncertainty ellipse balloon right after each turn.",
+    }
+    st.info(_TRAJ_NOTES[traj_key])
 
-with st.sidebar.expander("The predict–update loop", expanded=False):
-    st.markdown(
-        """
+    with st.expander("The predict–update loop", expanded=False):
+        st.markdown(
+            """
 1. **Predict** — propagate state through the motion model; uncertainty *grows*
 2. **Update** — fold in the new noisy measurement via the Kalman gain; uncertainty *shrinks*
 3. Repeat for every new observation
 """
-    )
+        )
 
 # ---------------------------------------------------------------------------
 # Session state — (re)generate data & re-run filter on any relevant change
@@ -112,12 +115,7 @@ if (
 snapshots = st.session_state[_k("snapshots")]
 n_frames = len(snapshots)
 
-# ---------------------------------------------------------------------------
-# Main area header
-# ---------------------------------------------------------------------------
-st.title("Kalman Filter — Predict/Update Visualiser")
-
-st.caption(
+caption_slot.caption(
     f"Trajectory: **{traj_name}** | "
     f"Steps: **{n_steps}** | "
     f"Q: **{q:.2f}** | "
@@ -125,139 +123,160 @@ st.caption(
     f"Seed: **{seed}**"
 )
 
-# ---------------------------------------------------------------------------
-# Playback controls  (pure Streamlit — no Plotly updatemenus)
-# ---------------------------------------------------------------------------
-# Defensive clamp: guards against a stale step_idx surviving into a rerun
-# where n_frames shrank (e.g. a mid-autoplay parameter change) before the
-# session-state reset above has a chance to run.
-step_idx: int = st.session_state.get(_k("step_idx"), 0)
-step_idx = max(0, min(step_idx, n_frames - 1))
-st.session_state[_k("step_idx")] = step_idx
-playing: bool = st.session_state.get(_k("playing"), False)
-
-with st.container(border=True):
-    speed = st.select_slider(
-        "Playback speed",
-        options=["0.5×", "1×", "2×", "4×"],
-        value="1×",
-        label_visibility="collapsed",
-        key=_k("speed"),
+with col_main:
+    about_section(
+        "The Kalman filter is the default algorithm for tracking a moving "
+        "object from noisy sensor readings — it flew on every Apollo "
+        "mission's guidance computer and sits inside GPS receivers, "
+        "robotics, and autonomous vehicles today. Its elegance is that it's "
+        "provably the *optimal* linear estimator for this problem (minimum "
+        "mean-squared error) and runs in constant time per step, needing no "
+        "history beyond the current state estimate. The **Predict** / "
+        "**Update** cycle this page animates is the whole algorithm: predict "
+        "always grows the uncertainty ellipse (pure extrapolation, no new "
+        "information), update always shrinks it (a real measurement arrives) "
+        "— watch that ellipse balloon right after a turn on the "
+        "**Maneuvering turns** trajectory, where the constant-velocity model "
+        "is worst-matched to reality.",
+        [
+            "Kalman, R.E. (1960). \"A New Approach to Linear Filtering and "
+            "Prediction Problems.\" *Journal of Basic Engineering.*",
+        ],
     )
-    DELAY = {"0.5×": 1.0, "1×": 0.5, "2×": 0.25, "4×": 0.12}[speed]
 
-    col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
+    # -------------------------------------------------------------------
+    # Playback controls  (pure Streamlit — no Plotly updatemenus)
+    # -------------------------------------------------------------------
+    # Defensive clamp: guards against a stale step_idx surviving into a rerun
+    # where n_frames shrank (e.g. a mid-autoplay parameter change) before the
+    # session-state reset above has a chance to run.
+    step_idx: int = st.session_state.get(_k("step_idx"), 0)
+    step_idx = max(0, min(step_idx, n_frames - 1))
+    st.session_state[_k("step_idx")] = step_idx
+    playing: bool = st.session_state.get(_k("playing"), False)
 
-    with col_prev:
-        if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
-            st.session_state[_k("step_idx")] = max(0, step_idx - 1)
-            st.rerun()
+    with st.container(border=True):
+        speed = st.select_slider(
+            "Playback speed",
+            options=["0.5×", "1×", "2×", "4×"],
+            value="1×",
+            label_visibility="collapsed",
+            key=_k("speed"),
+        )
+        DELAY = {"0.5×": 1.0, "1×": 0.5, "2×": 0.25, "4×": 0.12}[speed]
 
-    with col_play:
-        if st.button("▶  Play", use_container_width=True,
-                     disabled=(playing or step_idx == n_frames - 1), type="primary", key=_k("play")):
-            st.session_state[_k("playing")] = True
-            st.rerun()
+        col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
 
-    with col_pause:
-        if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
-            st.session_state[_k("playing")] = False
-            st.rerun()
+        with col_prev:
+            if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
+                st.session_state[_k("step_idx")] = max(0, step_idx - 1)
+                st.rerun()
 
-    with col_next:
-        if st.button("Next ▶", use_container_width=True,
-                     disabled=(step_idx == n_frames - 1 or playing), key=_k("next")):
-            st.session_state[_k("step_idx")] = min(n_frames - 1, step_idx + 1)
-            st.rerun()
+        with col_play:
+            if st.button("▶  Play", use_container_width=True,
+                         disabled=(playing or step_idx == n_frames - 1), type="primary", key=_k("play")):
+                st.session_state[_k("playing")] = True
+                st.rerun()
 
-    with col_speed:
-        st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
+        with col_pause:
+            if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
+                st.session_state[_k("playing")] = False
+                st.rerun()
 
-    st.progress(step_idx / max(n_frames - 1, 1),
-                text=f"Frame {step_idx + 1} / {n_frames} — {snapshots[step_idx].title}")
+        with col_next:
+            if st.button("Next ▶", use_container_width=True,
+                         disabled=(step_idx == n_frames - 1 or playing), key=_k("next")):
+                st.session_state[_k("step_idx")] = min(n_frames - 1, step_idx + 1)
+                st.rerun()
 
-# ---------------------------------------------------------------------------
-# Chart + metrics for the current step
-# ---------------------------------------------------------------------------
-snap = snapshots[step_idx]
+        with col_speed:
+            st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
 
-with st.container(border=True):
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Phase", snap.phase.capitalize())
-    m2.metric("Time step", str(snap.step))
-    m3.metric("Uncertainty (trace of P)", f"{snap.pos_uncertainty:.2f}")
-    if snap.phase == "update":
-        m4.metric("Innovation |y|", f"{np.linalg.norm(snap.innovation):.2f}")
+        st.progress(step_idx / max(n_frames - 1, 1),
+                    text=f"Frame {step_idx + 1} / {n_frames} — {snapshots[step_idx].title}")
+
+    # -------------------------------------------------------------------
+    # Chart + metrics for the current step
+    # -------------------------------------------------------------------
+    snap = snapshots[step_idx]
+
+    with st.container(border=True):
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Phase", snap.phase.capitalize())
+        m2.metric("Time step", str(snap.step))
+        m3.metric("Uncertainty (trace of P)", f"{snap.pos_uncertainty:.2f}")
+        if snap.phase == "update":
+            m4.metric("Innovation |y|", f"{np.linalg.norm(snap.innovation):.2f}")
+        else:
+            m4.metric("Innovation |y|", "—")
+
+    fig = make_static_figure(snapshots, step_idx)
+    with st.container(border=True):
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart"))
+
+    if snap.phase == "init":
+        st.info(
+            "**Initial belief** — before any measurement is folded in, the filter "
+            "starts at the first observation with completely unknown velocity, "
+            "hence the wide uncertainty ellipse."
+        )
+    elif snap.phase == "predict":
+        st.info(
+            "**Predict step** — the state is propagated through the constant-"
+            "velocity motion model, and the covariance grows by the process "
+            "noise **Q**. No measurement is used here; this is pure "
+            "extrapolation, so uncertainty can only increase."
+        )
     else:
-        m4.metric("Innovation |y|", "—")
+        err = float(np.linalg.norm(snap.pos_mean - snap.true_pos))
+        st.info(
+            f"**Update step** — the new noisy observation is folded in via the "
+            f"Kalman gain **K**, shrinking the ellipse. Estimate is now "
+            f"**{err:.2f}** units from the (hidden) true position."
+        )
 
-fig = make_static_figure(snapshots, step_idx)
-with st.container(border=True):
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart"))
-
-if snap.phase == "init":
-    st.info(
-        "**Initial belief** — before any measurement is folded in, the filter "
-        "starts at the first observation with completely unknown velocity, "
-        "hence the wide uncertainty ellipse."
-    )
-elif snap.phase == "predict":
-    st.info(
-        "**Predict step** — the state is propagated through the constant-"
-        "velocity motion model, and the covariance grows by the process "
-        "noise **Q**. No measurement is used here; this is pure "
-        "extrapolation, so uncertainty can only increase."
-    )
-else:
-    err = float(np.linalg.norm(snap.pos_mean - snap.true_pos))
-    st.info(
-        f"**Update step** — the new noisy observation is folded in via the "
-        f"Kalman gain **K**, shrinking the ellipse. Estimate is now "
-        f"**{err:.2f}** units from the (hidden) true position."
-    )
-
-with st.expander("📖 Reading the animation"):
-    st.markdown(
-        """
+    with st.expander("📖 Reading the animation"):
+        st.markdown(
+            """
 - **Dotted grey line** — the hidden true trajectory (only shown for grading; the filter never sees it)
 - **Rose ×** — noisy sensor observations, the filter's only input
 - **Indigo line + dots** — the Kalman filter's running position estimate
 - **Shaded indigo ellipse** — 2σ uncertainty region; grows on **Predict**, shrinks on **Update**
 - **◀ Prev / Next ▶** to step manually, **▶ Play** to auto-advance
 """
-    )
+        )
 
-# ---------------------------------------------------------------------------
-# Always-on comparison panel: raw observations vs. Kalman-smoothed path
-# ---------------------------------------------------------------------------
-st.subheader("Raw vs. Kalman-smoothed — full run")
+    # -------------------------------------------------------------------
+    # Always-on comparison panel: raw observations vs. Kalman-smoothed path
+    # -------------------------------------------------------------------
+    st.subheader("Raw vs. Kalman-smoothed — full run")
 
-update_snaps = [s for s in snapshots if s.phase in ("init", "update")]
-true_full = np.array([s.true_pos for s in update_snaps])
-obs_full = np.array([s.observation for s in update_snaps])
-est_full = np.array([s.pos_mean for s in update_snaps])
+    update_snaps = [s for s in snapshots if s.phase in ("init", "update")]
+    true_full = np.array([s.true_pos for s in update_snaps])
+    obs_full = np.array([s.observation for s in update_snaps])
+    est_full = np.array([s.pos_mean for s in update_snaps])
 
-rmse_raw = float(np.sqrt(np.mean(np.sum((obs_full - true_full) ** 2, axis=1))))
-rmse_filtered = float(np.sqrt(np.mean(np.sum((est_full - true_full) ** 2, axis=1))))
-improvement = (1 - rmse_filtered / rmse_raw) * 100 if rmse_raw > 0 else 0.0
+    rmse_raw = float(np.sqrt(np.mean(np.sum((obs_full - true_full) ** 2, axis=1))))
+    rmse_filtered = float(np.sqrt(np.mean(np.sum((est_full - true_full) ** 2, axis=1))))
+    improvement = (1 - rmse_filtered / rmse_raw) * 100 if rmse_raw > 0 else 0.0
 
-with st.container(border=True):
-    c1, c2, c3 = st.columns(3)
-    c1.metric("RMSE — raw observations", f"{rmse_raw:.3f}")
-    c2.metric("RMSE — Kalman estimate", f"{rmse_filtered:.3f}")
-    c3.metric("Improvement", f"{improvement:.1f}%")
+    with st.container(border=True):
+        c1, c2, c3 = st.columns(3)
+        c1.metric("RMSE — raw observations", f"{rmse_raw:.3f}")
+        c2.metric("RMSE — Kalman estimate", f"{rmse_filtered:.3f}")
+        c3.metric("Improvement", f"{improvement:.1f}%")
 
-    st.plotly_chart(make_comparison_figure(snapshots), use_container_width=True,
-                    config={"displayModeBar": False}, key=_k("comparison_chart"))
+        st.plotly_chart(make_comparison_figure(snapshots), use_container_width=True,
+                        config={"displayModeBar": False}, key=_k("comparison_chart"))
 
-# ---------------------------------------------------------------------------
-# Auto-advance (must be last — triggers rerun after a delay)
-# ---------------------------------------------------------------------------
-if playing:
-    if step_idx < n_frames - 1:
-        time.sleep(DELAY)
-        st.session_state[_k("step_idx")] = min(n_frames - 1, step_idx + 1)
-        st.rerun()
-    else:
-        st.session_state[_k("playing")] = False
-        st.rerun()
+    # -------------------------------------------------------------------
+    # Auto-advance (must be last — triggers rerun after a delay)
+    # -------------------------------------------------------------------
+    if playing:
+        if step_idx < n_frames - 1:
+            time.sleep(DELAY)
+            st.session_state[_k("step_idx")] = min(n_frames - 1, step_idx + 1)
+            st.rerun()
+        else:
+            st.session_state[_k("playing")] = False
+            st.rerun()

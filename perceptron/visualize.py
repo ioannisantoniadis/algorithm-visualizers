@@ -26,13 +26,13 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from common.theme import apply_theme, base_layout
 from .algorithm import GDSnapshot, PerceptronSnapshot
 
 # Shared portfolio palette — kept in sync with .streamlit/config.toml's
 # theme.chartCategoricalColors so every chart matches the app chrome.
 _PALETTE = ["#6366f1", "#14b8a6", "#f59e0b", "#f43f5e", "#0ea5e9",
             "#8b5cf6", "#84cc16", "#fb923c", "#06b6d4", "#ec4899"]
-_FONT_FAMILY = "Inter, -apple-system, Segoe UI, sans-serif"
 
 # Class colours (Perceptron tab)
 _CLASS_COLOUR = {1.0: _PALETTE[0], -1.0: _PALETTE[3]}
@@ -60,39 +60,6 @@ _AXIS_STYLE = dict(
     showgrid=True, gridcolor="#eef0f4", gridwidth=1,
     zeroline=False, showline=True, linecolor="#e4e4e7", linewidth=1,
 )
-
-
-def _base_layout_2d(title: str, xrange: list[float], yrange: list[float]) -> go.Layout:
-    return go.Layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text=title, x=0.5, xanchor="center", font=dict(size=15, color="#18181b")),
-        xaxis=dict(**_AXIS_STYLE, title="x₁", range=xrange),
-        yaxis=dict(**_AXIS_STYLE, title="x₂", range=yrange,
-                   scaleanchor="x", scaleratio=1),
-        legend=dict(orientation="v", x=1.02, y=1, bgcolor="rgba(255,255,255,0.9)",
-                    bordercolor="#e4e4e7", borderwidth=1, font=dict(size=12)),
-        margin=dict(l=50, r=170, t=60, b=50),
-        height=540,
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-    )
-
-
-def _weight_space_layout(title: str, w1_range, w2_range) -> go.Layout:
-    axis_style = dict(_AXIS_STYLE, zeroline=True, zerolinecolor="#a1a1aa")
-    return go.Layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text=title, x=0.5, xanchor="center", font=dict(size=15, color="#18181b")),
-        xaxis=dict(**axis_style, title="w₁", range=list(w1_range)),
-        yaxis=dict(**axis_style, title="w₂", range=list(w2_range),
-                   scaleanchor="x", scaleratio=1),
-        legend=dict(orientation="v", x=1.02, y=1, bgcolor="rgba(255,255,255,0.9)",
-                    bordercolor="#e4e4e7", borderwidth=1, font=dict(size=12)),
-        margin=dict(l=50, r=170, t=60, b=50),
-        height=540,
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-    )
 
 
 def _boundary_geometry(w: np.ndarray, span: float):
@@ -194,7 +161,12 @@ def make_perceptron_figure(
             )
         )
 
-    fig.update_layout(_base_layout_2d(snap.title, xr, yr))
+    fig.update_layout(base_layout(
+        None,  # per-frame title, already shown in the page's progress bar
+        height=540,
+        xaxis=dict(**_AXIS_STYLE, title="x₁", range=xr),
+        yaxis=dict(**_AXIS_STYLE, title="x₂", range=yr, scaleanchor="x", scaleratio=1),
+    ))
     return fig
 
 
@@ -244,9 +216,14 @@ def make_gd_contour_figure(
             )
         )
 
-    fig.update_layout(
-        _weight_space_layout(snap.title, [w1s.min(), w1s.max()], [w2s.min(), w2s.max()])
-    )
+    axis_style = dict(_AXIS_STYLE, zeroline=True, zerolinecolor="#a1a1aa")
+    fig.update_layout(base_layout(
+        None,  # per-frame title, already shown in the page's progress bar
+        height=540,
+        xaxis=dict(**axis_style, title="w₁", range=[w1s.min(), w1s.max()]),
+        yaxis=dict(**axis_style, title="w₂", range=[w2s.min(), w2s.max()],
+                   scaleanchor="x", scaleratio=1),
+    ))
     return fig
 
 
@@ -300,12 +277,7 @@ def make_gd_side_by_side_figure(
 
     fig.update_yaxes(title_text="w₂", range=[w2s.min(), w2s.max()], row=1, col=1,
                       scaleanchor="x", **_AXIS_STYLE)
-    fig.update_layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        height=400, margin=dict(l=40, r=40, t=50, b=40),
-        plot_bgcolor="#fbfbfd", paper_bgcolor="rgba(0,0,0,0)",
-        showlegend=False,
-    )
+    apply_theme(fig, None, height=400, showlegend=False)
     return fig
 
 
@@ -325,16 +297,10 @@ def make_gd_loss_curve_figure(snapshots: list[GDSnapshot], upto_step: int) -> go
             )
         )
 
-    fig.update_layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text="Loss vs. step", x=0.5, xanchor="center", y=0.97, yanchor="top",
-                   font=dict(size=14, color="#18181b")),
-        xaxis=dict(**_AXIS_STYLE, title="Step"),
-        yaxis=dict(**_AXIS_STYLE, title="Logistic loss"),
+    fig.update_layout(base_layout(
+        "Loss vs. step",  # static caption, not shown elsewhere on the page
         height=340,
-        margin=dict(l=55, r=30, t=70, b=45),
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", x=0.5, xanchor="center", y=1.16, font=dict(size=12)),
-    )
+        xaxis=dict(title="Step"),
+        yaxis=dict(title="Logistic loss"),
+    ))
     return fig

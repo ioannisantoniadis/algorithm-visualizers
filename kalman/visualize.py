@@ -26,13 +26,13 @@ from __future__ import annotations
 import numpy as np
 import plotly.graph_objects as go
 
+from common.theme import base_layout
 from .algorithm import Snapshot
 
 # Shared portfolio palette — kept in sync with .streamlit/config.toml's
 # theme.chartCategoricalColors so every chart matches the app chrome.
 _PALETTE = ["#6366f1", "#14b8a6", "#f59e0b", "#f43f5e", "#0ea5e9",
             "#8b5cf6", "#84cc16", "#fb923c", "#06b6d4", "#ec4899"]
-_FONT_FAMILY = "Inter, -apple-system, Segoe UI, sans-serif"
 
 _COLOR_TRUE = "#a1a1aa"
 _COLOR_OBS = _PALETTE[3]   # rose — noisy observations
@@ -141,29 +141,6 @@ def _make_traces(snapshots: list[Snapshot], idx: int) -> list[go.Scatter]:
     return traces
 
 
-def _base_layout(title_text: str, x_range, y_range, height: int = 560) -> go.Layout:
-    axis_style = dict(
-        showgrid=True, gridcolor="#eef0f4", gridwidth=1,
-        zeroline=False, showline=True, linecolor="#e4e4e7", linewidth=1,
-    )
-    return go.Layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text=title_text, x=0.5, xanchor="center",
-                   font=dict(size=16, color="#18181b")),
-        xaxis=dict(**axis_style, title="x", range=x_range),
-        yaxis=dict(**axis_style, title="y", range=y_range, scaleanchor="x"),
-        legend=dict(
-            orientation="v", x=1.02, y=1, yanchor="top",
-            bgcolor="rgba(255,255,255,0.9)", bordercolor="#e4e4e7", borderwidth=1,
-            font=dict(size=12),
-        ),
-        margin=dict(l=40, r=160, t=60, b=40),
-        height=height,
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-    )
-
-
 def build_figure(snapshots: list[Snapshot]) -> go.Figure:
     """Return a Plotly Figure with one animation frame per snapshot."""
     if not snapshots:
@@ -181,7 +158,11 @@ def build_figure(snapshots: list[Snapshot]) -> go.Figure:
     fig = go.Figure(
         data=frames[0].data,
         frames=frames,
-        layout=_base_layout(snapshots[0].title, x_range, y_range),
+        layout=base_layout(
+            None,  # per-frame title — already shown in the page's progress bar
+            xaxis=dict(title="x", range=x_range),
+            yaxis=dict(title="y", range=y_range, scaleanchor="x"),
+        ),
     )
     fig.update_layout(
         sliders=[
@@ -214,7 +195,12 @@ def make_static_figure(snapshots: list[Snapshot], idx: int) -> go.Figure:
     given the full snapshot history (needed to draw the trails)."""
     x_range, y_range = _axis_ranges(snapshots)
     traces = _make_traces(snapshots, idx)
-    fig = go.Figure(data=traces, layout=_base_layout(snapshots[idx].title, x_range, y_range))
+    layout = base_layout(
+        None,  # per-frame title — already shown in the page's progress bar
+        xaxis=dict(title="x", range=x_range),
+        yaxis=dict(title="y", range=y_range, scaleanchor="x"),
+    )
+    fig = go.Figure(data=traces, layout=layout)
     return fig
 
 
@@ -237,9 +223,11 @@ def make_comparison_figure(snapshots: list[Snapshot]) -> go.Figure:
                    marker=dict(color=_COLOR_EST, size=5),
                    name="Kalman-smoothed"),
     ]
-    fig = go.Figure(
-        data=traces,
-        layout=_base_layout("Full run — raw observations vs. Kalman-smoothed path", x_range, y_range),
+    layout = base_layout(
+        "Full run — raw observations vs. Kalman-smoothed path",  # static caption — keep
+        height=460,
+        xaxis=dict(title="x", range=x_range),
+        yaxis=dict(title="y", range=y_range, scaleanchor="x"),
     )
-    fig.update_layout(height=460)
+    fig = go.Figure(data=traces, layout=layout)
     return fig

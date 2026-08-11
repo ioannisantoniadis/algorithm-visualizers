@@ -24,38 +24,12 @@ from __future__ import annotations
 import numpy as np
 import plotly.graph_objects as go
 
+from common.theme import PALETTE as _PALETTE
+from common.theme import base_layout
 from .algorithm import Snapshot
 
-# Shared portfolio palette — kept in sync with .streamlit/config.toml's
-# theme.chartCategoricalColors so every chart matches the app chrome.
-_PALETTE = ["#6366f1", "#14b8a6", "#f59e0b", "#f43f5e", "#0ea5e9",
-            "#8b5cf6", "#84cc16", "#fb923c", "#06b6d4", "#ec4899"]
 _TRUE_FREQ_COLOUR = "#f43f5e"
 _ORIGINAL_COLOUR = "#a1a1aa"
-_FONT_FAMILY = "Inter, -apple-system, Segoe UI, sans-serif"
-_BG = "#fbfbfd"
-_PAPER = "rgba(0,0,0,0)"
-
-
-def _base_layout(title: str, height: int = 340, title_size: int = 16, **extra) -> go.Layout:
-    """Shared layout defaults (font, background, grid) applied to every chart
-    in this module, mirroring the theme in .streamlit/config.toml."""
-    layout = dict(
-        title=dict(text=title, x=0.5, xanchor="center", font=dict(size=title_size, color="#18181b")),
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        height=height,
-        margin=dict(l=50, r=30, t=50, b=40),
-        plot_bgcolor=_BG,
-        paper_bgcolor=_PAPER,
-        legend=dict(orientation="h", y=-0.25, bgcolor="rgba(255,255,255,0.9)",
-                    bordercolor="#e4e4e7", borderwidth=1, font=dict(size=12)),
-    )
-    layout.update(extra)
-    return go.Layout(**layout)
-
-
-_GRID_STYLE = dict(showgrid=True, gridcolor="#eef0f4", gridwidth=1,
-                    zeroline=False, showline=True, linecolor="#e4e4e7", linewidth=1)
 
 
 # ---------------------------------------------------------------------------
@@ -85,14 +59,14 @@ def make_signal_figure(
         go.Scatter(
             x=t, y=x, mode="lines",
             line=dict(width=2, color=_PALETTE[0]),
-            name="x(t) = sum of components" if components else "x(t)",
+            name="x(t) sum" if components else "x(t)",
         )
     )
 
-    fig.update_layout(_base_layout(
+    fig.update_layout(base_layout(
         title, height=340,
-        xaxis=dict(title="time (s)", **_GRID_STYLE),
-        yaxis=dict(title="amplitude", **_GRID_STYLE),
+        xaxis=dict(title="time (s)"),
+        yaxis=dict(title="amplitude"),
     ))
     return fig
 
@@ -130,14 +104,14 @@ def make_spectrum_figure(
             go.Scatter(
                 x=[None], y=[None], mode="lines",
                 line=dict(color=_TRUE_FREQ_COLOUR, width=1, dash="dash"),
-                name="true input frequency",
+                name="true frequency",
             )
         )
 
-    fig.update_layout(_base_layout(
+    fig.update_layout(base_layout(
         title, height=340,
-        xaxis=dict(title="frequency (Hz)", **_GRID_STYLE),
-        yaxis=dict(title="magnitude", **_GRID_STYLE),
+        xaxis=dict(title="frequency (Hz)"),
+        yaxis=dict(title="magnitude"),
     ))
     return fig
 
@@ -156,11 +130,11 @@ def make_reconstruction_figure(
                               name=f"reconstructed from top {k} bin(s)"))
 
     rmse = float(np.sqrt(np.mean((x - xk) ** 2)))
-    fig.update_layout(_base_layout(
+    fig.update_layout(base_layout(
         f"Reconstruction from the {k} largest frequency bins (of {n_bins}) — RMSE {rmse:.3f}",
-        height=340, title_size=15,
-        xaxis=dict(title="time (s)", **_GRID_STYLE),
-        yaxis=dict(title="amplitude", **_GRID_STYLE),
+        height=340,
+        xaxis=dict(title="time (s)"),
+        yaxis=dict(title="amplitude"),
     ))
     return fig
 
@@ -276,15 +250,15 @@ def make_butterfly_figure(snap: Snapshot, edges: list[dict], n_bits: int) -> go.
     )
 
     labels = ["Input", "Bit-rev"] + [f"Stage {s}" for s in range(1, n_bits + 1)]
-    fig.update_layout(_base_layout(
-        snap.title, height=520,
+    # Per-frame title (snap.title) dropped — this tab has its own progress
+    # bar in apps/fft.py that already shows the equivalent step label.
+    fig.update_layout(base_layout(
+        None, height=520,
         xaxis=dict(
             tickmode="array", tickvals=list(range(n_bits + 2)), ticktext=labels,
             range=[-0.6, n_bits + 1.6], showgrid=False,
-            showline=True, linecolor="#e4e4e7", linewidth=1,
         ),
-        yaxis=dict(title="array index", autorange="reversed", showgrid=False,
-                    showline=True, linecolor="#e4e4e7", linewidth=1),
+        yaxis=dict(title="array index", autorange="reversed", showgrid=False),
         margin=dict(l=50, r=30, t=60, b=50),
         showlegend=False,
     ))
@@ -303,7 +277,7 @@ def make_spectrogram_figure(times: np.ndarray, freqs: np.ndarray, mags: np.ndarr
             colorbar=dict(title="|X(f)|"),
         )
     )
-    fig.update_layout(_base_layout(
+    fig.update_layout(base_layout(
         "Spectrogram — |STFT(t, f)| via our own windowed FFT", height=420,
         xaxis=dict(title="time (s)"),
         yaxis=dict(title="frequency (Hz)"),
@@ -323,11 +297,9 @@ def make_benchmark_figure(sizes: list[int], naive_times: list[float], fft_times:
     fig.add_trace(go.Scatter(x=sizes, y=fft_times, mode="lines+markers",
                               name="Cooley-Tukey FFT — O(N log N)", line=dict(color=_PALETTE[0])))
 
-    fig.update_layout(_base_layout(
-        "Runtime vs N (log-log)", height=420, margin=dict(l=60, r=30, t=50, b=40),
-        xaxis=dict(title="N (samples)", type="log", **_GRID_STYLE),
-        yaxis=dict(title="time (s), averaged", type="log", **_GRID_STYLE),
-        legend=dict(orientation="h", y=-0.2, bgcolor="rgba(255,255,255,0.9)",
-                    bordercolor="#e4e4e7", borderwidth=1, font=dict(size=12)),
+    fig.update_layout(base_layout(
+        "Runtime vs N (log-log)", height=420,
+        xaxis=dict(title="N (samples)", type="log"),
+        yaxis=dict(title="time (s), averaged", type="log"),
     ))
     return fig

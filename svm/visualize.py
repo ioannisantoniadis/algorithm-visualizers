@@ -28,13 +28,14 @@ from __future__ import annotations
 import numpy as np
 import plotly.graph_objects as go
 
+from common.theme import base_layout
+
 from .algorithm import Snapshot, kernel_matrix
 
 # Shared portfolio palette — kept in sync with .streamlit/config.toml's
 # theme.chartCategoricalColors so every chart matches the app chrome.
 _PALETTE = ["#6366f1", "#14b8a6", "#f59e0b", "#f43f5e", "#0ea5e9",
             "#8b5cf6", "#84cc16", "#fb923c", "#06b6d4", "#ec4899"]
-_FONT_FAMILY = "Inter, -apple-system, Segoe UI, sans-serif"
 
 _POS_COLOR = _PALETTE[0]   # class +1 — indigo
 _NEG_COLOR = _PALETTE[3]   # class -1 — rose
@@ -158,27 +159,13 @@ def _point_traces(snap: Snapshot) -> list[go.Scatter]:
     return traces
 
 
-_AXIS_STYLE = dict(
-    showgrid=True, gridcolor="#eef0f4", gridwidth=1,
-    zeroline=False, showline=True, linecolor="#e4e4e7", linewidth=1,
-)
-
-
-def _layout(title: str, X: np.ndarray) -> go.Layout:
+def _layout(title: str | None, X: np.ndarray) -> go.Layout:
     pad = 1.0
-    return go.Layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text=title, x=0.5, xanchor="center", font=dict(size=16, color="#18181b")),
-        xaxis=dict(**_AXIS_STYLE, title="x₁",
-                   range=[float(X[:, 0].min()) - pad, float(X[:, 0].max()) + pad]),
-        yaxis=dict(**_AXIS_STYLE, title="x₂", scaleanchor="x",
+    return base_layout(
+        title,
+        xaxis=dict(title="x₁", range=[float(X[:, 0].min()) - pad, float(X[:, 0].max()) + pad]),
+        yaxis=dict(title="x₂", scaleanchor="x",
                    range=[float(X[:, 1].min()) - pad, float(X[:, 1].max()) + pad]),
-        legend=dict(orientation="v", x=1.02, y=1, bgcolor="rgba(255,255,255,0.9)",
-                    bordercolor="#e4e4e7", borderwidth=1, font=dict(size=12)),
-        margin=dict(l=40, r=190, t=60, b=40),
-        height=560,
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
     )
 
 
@@ -208,7 +195,7 @@ def build_figure(
     fig = go.Figure(
         data=frames[0].data,
         frames=frames,
-        layout=_layout(snapshots[0].title, snapshots[0].points),
+        layout=_layout(None, snapshots[0].points),  # per-frame title shown via go.Frame layout instead
     )
     fig.update_layout(
         sliders=[dict(
@@ -239,7 +226,8 @@ def make_static_figure(
     """Single-frame figure for one snapshot — used by manual step-through."""
     gx, gy, Z = _decision_grid(snap, kernel, gamma, degree, coef0)
     data = _surface_traces(gx, gy, Z) + _point_traces(snap)
-    return go.Figure(data=data, layout=_layout(snap.title, snap.points))
+    # per-frame title dropped — already shown in the page's progress bar
+    return go.Figure(data=data, layout=_layout(None, snap.points))
 
 
 def make_loss_figure(snapshots: list[Snapshot], current_idx: int) -> go.Figure:
@@ -267,15 +255,13 @@ def make_loss_figure(snapshots: list[Snapshot], current_idx: int) -> go.Figure:
                     line=dict(width=2, color="#18181b")),
         name="Current sweep", showlegend=False,
     ))
-    fig.update_layout(
-        font=dict(family=_FONT_FAMILY, size=12, color="#3f3f46"),
+    fig.layout = base_layout(
+        None,
         height=220,
-        margin=dict(l=40, r=20, t=25, b=35),
-        xaxis=dict(title="Sweep", showgrid=True, gridcolor="#eef0f4", zeroline=False),
-        yaxis=dict(title="Σα − ½αᵀQα", showgrid=True, gridcolor="#eef0f4"),
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
+        margin=dict(l=40, r=20, t=25, b=35),
+        xaxis=dict(title="Sweep"),
+        yaxis=dict(title="Σα − ½αᵀQα"),
     )
     return fig
 

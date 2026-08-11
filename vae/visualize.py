@@ -34,6 +34,7 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from common.theme import apply_theme, base_layout
 from .algorithm import Snapshot, decode
 
 # Shared portfolio palette — kept in sync with .streamlit/config.toml's
@@ -44,7 +45,6 @@ _RECON_COLOUR = "#a1a1aa"
 _PRIOR_COLOUR = "#71717a"
 _HIGHLIGHT_COLOUR = "#f43f5e"
 _MANIFOLD_COLOUR = "#d4d4d8"
-_FONT_FAMILY = "Inter, -apple-system, Segoe UI, sans-serif"
 
 _AXIS_RANGE = [-4.2, 4.2]  # fixed across frames so the animation doesn't jitter
 
@@ -57,36 +57,6 @@ def _label_colours(labels: np.ndarray) -> dict[int, str]:
 def _circle(radius: float, n: int = 100) -> tuple[np.ndarray, np.ndarray]:
     t = np.linspace(0, 2 * np.pi, n)
     return radius * np.cos(t), radius * np.sin(t)
-
-
-def _base_layout(title: str, xaxis_title: str = "x₁", yaxis_title: str = "x₂", height: int = 420) -> dict:
-    """Shared layout treatment for the two square (scaleanchor="x") data/latent
-    figures. The legend is placed vertically to the right of the plot rather
-    than horizontally underneath it — with scaleanchor="x" forcing an equal
-    aspect ratio, a narrow column (e.g. the decoder-explorer's 2/5-width
-    charts) letterboxes the plot and pushes the x-axis title down into a
-    y=-0.2 legend's territory, visibly overlapping the two texts. A right-hand
-    legend never shares vertical space with the axis title, so it can't
-    collide regardless of how the figure gets squeezed by the column layout.
-    """
-    axis_style = dict(
-        showgrid=True, gridcolor="#eef0f4", gridwidth=1,
-        zeroline=True, zerolinecolor="#eef0f4",
-        showline=True, linecolor="#e4e4e7", linewidth=1,
-    )
-    return dict(
-        font=dict(family=_FONT_FAMILY, size=12, color="#3f3f46"),
-        title=dict(text=title, x=0.5, xanchor="center", font=dict(size=14, color="#18181b")),
-        xaxis=dict(**axis_style, title=xaxis_title, range=_AXIS_RANGE, constrain="domain"),
-        yaxis=dict(**axis_style, title=yaxis_title, range=_AXIS_RANGE, scaleanchor="x", constrain="domain"),
-        legend=dict(orientation="v", x=1.02, y=1, xanchor="left",
-                     bgcolor="rgba(255,255,255,0.9)", bordercolor="#e4e4e7",
-                     borderwidth=1, font=dict(size=10)),
-        margin=dict(l=40, r=170, t=40, b=40),
-        height=height,
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +133,18 @@ def make_data_space_figure(
             )
         )
 
-    fig = go.Figure(data=traces, layout=go.Layout(**_base_layout(title, "x₁", "x₂")))
+    fig = go.Figure(data=traces, layout=base_layout(
+        title,  # static per-panel caption ("Plain Autoencoder" / "VAE"), not shown elsewhere
+        height=420,
+        xaxis=dict(
+            title="x₁", range=_AXIS_RANGE, constrain="domain",
+            zeroline=True, zerolinecolor="#eef0f4",
+        ),
+        yaxis=dict(
+            title="x₂", range=_AXIS_RANGE, scaleanchor="x", constrain="domain",
+            zeroline=True, zerolinecolor="#eef0f4",
+        ),
+    ))
     return fig
 
 
@@ -228,7 +209,18 @@ def make_latent_space_figure(
             )
         )
 
-    fig = go.Figure(data=traces, layout=go.Layout(**_base_layout(title, "z₁", "z₂")))
+    fig = go.Figure(data=traces, layout=base_layout(
+        title,  # static per-panel caption ("Plain Autoencoder" / "VAE"), not shown elsewhere
+        height=420,
+        xaxis=dict(
+            title="z₁", range=_AXIS_RANGE, constrain="domain",
+            zeroline=True, zerolinecolor="#eef0f4",
+        ),
+        yaxis=dict(
+            title="z₂", range=_AXIS_RANGE, scaleanchor="x", constrain="domain",
+            zeroline=True, zerolinecolor="#eef0f4",
+        ),
+    ))
     return fig
 
 
@@ -273,13 +265,6 @@ def make_loss_figure(
                       showline=True, linecolor="#e4e4e7", linewidth=1)
     fig.update_yaxes(title_text="Loss", showgrid=True, gridcolor="#eef0f4",
                       showline=True, linecolor="#e4e4e7", linewidth=1)
-    fig.update_layout(
-        font=dict(family=_FONT_FAMILY, size=12, color="#3f3f46"),
-        height=320,
-        margin=dict(l=50, r=20, t=45, b=40),
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", y=-0.25, x=0.5, xanchor="center"),
-    )
+    apply_theme(fig, None, height=360)  # subplot_titles already caption each panel
     fig.update_annotations(font=dict(size=14, color="#18181b"))
     return fig

@@ -10,6 +10,7 @@ import time
 import numpy as np
 import streamlit as st
 
+from common.ui import about_section, params_rail
 from gmmviz.algorithm import fit
 from gmmviz.data import SHAPE_DEFAULTS, SHAPE_KEYS, SHAPE_NAMES, make_dataset
 from gmmviz.visualize import make_figure
@@ -22,11 +23,17 @@ def _k(name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Sidebar
+# Header — title first, caption filled in after params are known below
 # ---------------------------------------------------------------------------
-st.sidebar.markdown("##### ⚙️ DATA & MODEL")
+st.title("Gaussian mixture model — EM step-by-step")
+caption_slot = st.empty()
 
-with st.sidebar.container(border=True):
+col_params, col_main = st.columns([1, 3])
+
+# ---------------------------------------------------------------------------
+# Params rail
+# ---------------------------------------------------------------------------
+with params_rail(col_params, "Data & model"):
     shape_name = st.selectbox("Data shape", SHAPE_NAMES, index=0, key=_k("shape"))
     shape_key = SHAPE_KEYS[SHAPE_NAMES.index(shape_name)]
     defaults = SHAPE_DEFAULTS[shape_key]
@@ -62,18 +69,19 @@ with st.sidebar.container(border=True):
     seed = st.number_input("Random seed", 0, 9999, 42, 1, key=_k("seed"))
     regenerate = st.button("🔄 Re-run", use_container_width=True, key=_k("regen"))
 
-_SHAPE_NOTES = {
-    "blobs":       "**Gaussian blobs** — well-separated spherical clusters; GMM recovers the generating components almost exactly.",
-    "anisotropic": "**Anisotropic blobs** — full covariance lets ellipses rotate to match elongated clusters, a hard case for K-means.",
-    "varied":      "**Varied density** — components adapt their own Σ instead of forcing equal size like K-means.",
-    "moons":       "**Two moons** — each Gaussian can only cover an elliptical region, so crescents get split or blurred together.",
-    "circles":     "**Concentric rings** — same failure mode as moons: no ellipse matches a ring.",
-    "uniform":     "**Uniform noise** — no real structure to recover; components just spread out to tile the noise.",
-}
-st.sidebar.info(_SHAPE_NOTES[shape_key])
+with col_params:
+    _SHAPE_NOTES = {
+        "blobs":       "**Gaussian blobs** — well-separated spherical clusters; GMM recovers the generating components almost exactly.",
+        "anisotropic": "**Anisotropic blobs** — full covariance lets ellipses rotate to match elongated clusters, a hard case for K-means.",
+        "varied":      "**Varied density** — components adapt their own Σ instead of forcing equal size like K-means.",
+        "moons":       "**Two moons** — each Gaussian can only cover an elliptical region, so crescents get split or blurred together.",
+        "circles":     "**Concentric rings** — same failure mode as moons: no ellipse matches a ring.",
+        "uniform":     "**Uniform noise** — no real structure to recover; components just spread out to tile the noise.",
+    }
+    st.info(_SHAPE_NOTES[shape_key])
 
-with st.sidebar.expander("How EM works", expanded=False):
-    st.markdown("""
+    with st.expander("How EM works", expanded=False):
+        st.markdown("""
 1. **E-step** — for fixed π, μ, Σ, compute “soft counts” γᵢₖ ∝ πₖ 𝒩(xᵢ|μₖ,Σₖ)
 2. **M-step** — treat γ as weights; update π, μ, Σ by weighted MLE
 3. Repeat until log-likelihood plateaus (here: fixed iterations + two frames per step)
@@ -119,73 +127,89 @@ snap = snapshots[step_idx]
 series = np.array([s.log_likelihood for s in snapshots], dtype=np.float64)
 
 if len(snapshots) > 1:
-    st.sidebar.markdown("**Marginal log-likelihood** (each frame)")
-    st.sidebar.line_chart(
-        {"log Σᵢ log p(xᵢ)": [s.log_likelihood for s in snapshots]},
-        height=160,
-    )
+    with col_params:
+        st.markdown("**Marginal log-likelihood** (each frame)")
+        st.line_chart(
+            {"log Σᵢ log p(xᵢ)": [s.log_likelihood for s in snapshots]},
+            height=160,
+        )
 
-# ---------------------------------------------------------------------------
-# Header & summary metrics
-# ---------------------------------------------------------------------------
-st.title("Gaussian mixture model — EM step-by-step")
-
-st.caption(
+caption_slot.caption(
     f"**Shape:** {shape_name} · **n**={n_points} · **model K**={k_components} · "
     f"**EM iters**={max_iter} · **ε_reg**={reg_covar:.1e} · seed={seed}"
 )
 
-with st.container(border=True):
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Current log-likelihood", f"{snap.log_likelihood:.2f}")
-    c2.metric("Frame", f"{step_idx + 1} / {n_steps}")
-    c3.metric("ΔLL (vs frame 0)", f"{snap.log_likelihood - series[0]:.2f}")
-
-# ---------------------------------------------------------------------------
-# Playback controls
-# ---------------------------------------------------------------------------
-with st.container(border=True):
-    speed = st.select_slider("Playback speed", ["0.5×", "1×", "2×", "4×"], "1×", label_visibility="collapsed", key=_k("speed"))
-    delay = {"0.5×": 1.0, "1×": 0.52, "2×": 0.28, "4×": 0.14}[speed]
-    b1, b2, b3, b4 = st.columns([1, 1, 1, 1])
-    with b1:
-        if st.button("◀", use_container_width=True, disabled=step_idx == 0 or playing, key=_k("prev")):
-            st.session_state[_k("step_idx")] = max(0, step_idx - 1)
-            st.rerun()
-    with b2:
-        if st.button("▶ Play", use_container_width=True, disabled=playing or step_idx == n_steps - 1, type="primary", key=_k("play")):
-            st.session_state[_k("playing")] = True
-            st.rerun()
-    with b3:
-        if st.button("⏸", use_container_width=True, disabled=not playing, key=_k("pause")):
-            st.session_state[_k("playing")] = False
-            st.rerun()
-    with b4:
-        if st.button("Next ▶", use_container_width=True, disabled=step_idx == n_steps - 1 or playing, key=_k("next")):
-            st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-            st.rerun()
-
-    st.progress(step_idx / max(n_steps - 1, 1), text=f"Frame {step_idx + 1}/{n_steps}")
-
-if snap.substep == "m":
-    st.info(
-        "**M-step:** each Gaussian’s π, μ, Σ was just updated from the latest soft assignments. "
-        "Point colours **still** reflect the **previous** E-step so you can see ellipses move first."
-    )
-elif snap.substep == "e" or snap.substep == "init":
-    st.success(
-        "**E-step:** colours now match current π, μ, Σ (soft cluster membership). "
-        + ("Compare ellipse axes to the colour gradients." if snap.substep == "e" else "")
+with col_main:
+    about_section(
+        "GMM generalizes K-means by giving every cluster its own shape "
+        "(a full covariance matrix, not just a centroid) and letting points "
+        "belong fractionally to multiple clusters instead of a hard either/or. "
+        "Its training procedure, Expectation-Maximization, is one of the most "
+        "important general-purpose algorithms in statistics — the same E/M "
+        "pattern shows up in hidden Markov models, missing-data imputation, and "
+        "countless other latent-variable models, not just clustering. The "
+        "**Anisotropic blobs** shape on this page is the clearest demo of what "
+        "the extra covariance freedom buys you over K-means: the ellipses can "
+        "rotate and stretch to match elongated clusters instead of forcing "
+        "circles onto them.",
+        [
+            "Dempster, A.P., Laird, N.M., & Rubin, D.B. (1977). \"Maximum "
+            "Likelihood from Incomplete Data via the EM Algorithm.\" "
+            "*Journal of the Royal Statistical Society, Series B.*",
+        ],
     )
 
-fig = make_figure(snap)
-with st.container(border=True):
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": True}, key=_k("chart"))
+    with st.container(border=True):
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Current log-likelihood", f"{snap.log_likelihood:.2f}")
+        c2.metric("Frame", f"{step_idx + 1} / {n_steps}")
+        c3.metric("ΔLL (vs frame 0)", f"{snap.log_likelihood - series[0]:.2f}")
 
-if playing and step_idx < n_steps - 1:
-    time.sleep(delay)
-    st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-    st.rerun()
-elif playing:
-    st.session_state[_k("playing")] = False
-    st.rerun()
+    # -------------------------------------------------------------------
+    # Playback controls
+    # -------------------------------------------------------------------
+    with st.container(border=True):
+        speed = st.select_slider("Playback speed", ["0.5×", "1×", "2×", "4×"], "1×", label_visibility="collapsed", key=_k("speed"))
+        delay = {"0.5×": 1.0, "1×": 0.52, "2×": 0.28, "4×": 0.14}[speed]
+        b1, b2, b3, b4 = st.columns([1, 1, 1, 1])
+        with b1:
+            if st.button("◀", use_container_width=True, disabled=step_idx == 0 or playing, key=_k("prev")):
+                st.session_state[_k("step_idx")] = max(0, step_idx - 1)
+                st.rerun()
+        with b2:
+            if st.button("▶ Play", use_container_width=True, disabled=playing or step_idx == n_steps - 1, type="primary", key=_k("play")):
+                st.session_state[_k("playing")] = True
+                st.rerun()
+        with b3:
+            if st.button("⏸", use_container_width=True, disabled=not playing, key=_k("pause")):
+                st.session_state[_k("playing")] = False
+                st.rerun()
+        with b4:
+            if st.button("Next ▶", use_container_width=True, disabled=step_idx == n_steps - 1 or playing, key=_k("next")):
+                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                st.rerun()
+
+        st.progress(step_idx / max(n_steps - 1, 1), text=f"Frame {step_idx + 1}/{n_steps}")
+
+    if snap.substep == "m":
+        st.info(
+            "**M-step:** each Gaussian’s π, μ, Σ was just updated from the latest soft assignments. "
+            "Point colours **still** reflect the **previous** E-step so you can see ellipses move first."
+        )
+    elif snap.substep == "e" or snap.substep == "init":
+        st.success(
+            "**E-step:** colours now match current π, μ, Σ (soft cluster membership). "
+            + ("Compare ellipse axes to the colour gradients." if snap.substep == "e" else "")
+        )
+
+    fig = make_figure(snap)
+    with st.container(border=True):
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": True}, key=_k("chart"))
+
+    if playing and step_idx < n_steps - 1:
+        time.sleep(delay)
+        st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+        st.rerun()
+    elif playing:
+        st.session_state[_k("playing")] = False
+        st.rerun()

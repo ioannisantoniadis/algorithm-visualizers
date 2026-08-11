@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import plotly.graph_objects as go
 
+from common.theme import base_layout
 from .algorithm import Snapshot
 
 # Shared portfolio palette — kept in sync with .streamlit/config.toml's
@@ -13,7 +14,6 @@ _PALETTE = [
     "#6366f1", "#14b8a6", "#f59e0b", "#f43f5e", "#0ea5e9",
     "#8b5cf6", "#84cc16", "#fb923c", "#06b6d4", "#ec4899",
 ]
-_FONT_FAMILY = "Inter, -apple-system, Segoe UI, sans-serif"
 
 
 def _hex_to_rgb(h: str) -> tuple[int, int, int]:
@@ -76,35 +76,6 @@ def _title(snap: Snapshot) -> str:
     )
 
 
-def _base_layout(title: str, height: int = 560) -> go.Layout:
-    axis_style = dict(
-        showgrid=True, gridcolor="#eef0f4", gridwidth=1,
-        zeroline=False, showline=True, linecolor="#e4e4e7", linewidth=1,
-    )
-    return go.Layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text=title, x=0.5, xanchor="center", font=dict(size=14, color="#18181b")),
-        xaxis=dict(**axis_style, title="x", scaleanchor="y", scaleratio=1),
-        yaxis=dict(**axis_style, title="y"),
-        legend=dict(
-            orientation="h",
-            yanchor="top",
-            y=-0.08,
-            x=0.5,
-            xanchor="center",
-            font=dict(size=12, color="#3f3f46"),
-            bgcolor="rgba(255,255,255,0.9)",
-            bordercolor="#e4e4e7",
-            borderwidth=1,
-            itemsizing="constant",
-        ),
-        margin=dict(l=50, r=30, t=70, b=130),
-        height=height,
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-    )
-
-
 def make_figure(snap: Snapshot) -> go.Figure:
     X = snap.X
     colours = _soft_marker_colors(snap.responsibilities)
@@ -145,8 +116,14 @@ def make_figure(snap: Snapshot) -> go.Figure:
         )
 
     xr, yr = _range2d(X, snap.means)
-    layout = _base_layout(_title(snap))
-    layout.xaxis.range = xr
-    layout.yaxis.range = yr
+    # Unlike the other charts in this refactor, this title is NOT duplicated
+    # by the page's progress bar (which only shows "Frame i/n" — no iteration
+    # or E-/M-step info) so it's kept as the only on-screen indicator of
+    # which EM substep this frame is.
+    layout = base_layout(
+        _title(snap),
+        xaxis=dict(title="x", range=xr, scaleanchor="y", scaleratio=1),
+        yaxis=dict(title="y", range=yr),
+    )
     fig.update_layout(layout)
     return fig

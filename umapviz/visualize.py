@@ -6,14 +6,12 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from common.theme import FONT_FAMILY as _FONT_FAMILY
+from common.theme import PALETTE as _PALETTE
+from common.theme import apply_theme
 from .algorithm import Snapshot
 
-# Shared portfolio palette — kept in sync with .streamlit/config.toml's
-# theme.chartCategoricalColors so every chart matches the app chrome.
-_PALETTE = ["#6366f1", "#14b8a6", "#f59e0b", "#f43f5e", "#0ea5e9",
-            "#8b5cf6", "#84cc16", "#fb923c", "#06b6d4", "#ec4899"]
 _NOISE_COLOUR = "#a1a1aa"
-_FONT_FAMILY = "Inter, -apple-system, Segoe UI, sans-serif"
 
 
 def _colours(labels: np.ndarray) -> list[str]:
@@ -42,35 +40,37 @@ def _latent_xy_plot(latent: np.ndarray) -> np.ndarray:
 
 
 def _subplot_titles(snap: Snapshot) -> tuple[str, str]:
+    # Kept intentionally short — these sit above narrow subplot columns
+    # (this figure renders inside a nested column split) and Plotly does
+    # not wrap or truncate `subplot_titles` text, so long strings here
+    # overlap each other. The full explanation lives in the info box the
+    # page renders below the chart (`_frame_panels_explainer`), not here.
     d_lat = None
     if snap.latent_xy is not None and np.any(np.isfinite(snap.latent_xy[:, 0])):
         d_lat = int(snap.latent_xy.shape[1])
     if snap.phase in ("knn", "fuzzy"):
-        if snap.phase == "knn":
-            left = "A — What you see: PCA₂ of ℝᴰ + k-NN edges"
-        else:
-            left = "A — What you see: PCA₂ of ℝᴰ + fuzzy edges"
+        left = "A — PCA₂ + k-NN edges" if snap.phase == "knn" else "A — PCA₂ + fuzzy edges"
         if snap.latent_xy is None:
-            right = "B — No latent; copy of A for scale"
+            right = "B — no latent (scale ref)"
         elif np.any(~np.isfinite(snap.latent_xy[:, 0])):
-            right = "B — Ground truth (finite rows only)"
+            right = "B — ground truth (partial)"
         elif d_lat == 3:
-            right = "B — Ground truth: ℝ³ latent as (x,y)"
+            right = "B — ground truth (ℝ³→x,y)"
         else:
-            right = "B — Ground truth: latent before ℝᴰ lift"
+            right = "B — latent (pre-lift)"
     else:
         if snap.latent_xy is None:
-            left = "A — Reference: PCA₂ (no synthetic latent)"
-            right = "B — UMAP output 𝑌 (this is the result)"
+            left = "A — PCA₂ (reference)"
+            right = "B — UMAP output 𝑌"
         elif np.any(~np.isfinite(snap.latent_xy[:, 0])):
-            left = "A — Ground truth latent (partial)"
-            right = "B — UMAP output 𝑌 (this is the result)"
+            left = "A — ground truth (partial)"
+            right = "B — UMAP output 𝑌"
         elif d_lat == 3:
-            left = "A — Ground truth: ℝ³ as (x,y)"
-            right = "B — UMAP output 𝑌 (2-D from 3-D clusters)"
+            left = "A — ground truth (ℝ³→x,y)"
+            right = "B — UMAP output 𝑌"
         else:
-            left = "A — Ground truth: latent shape"
-            right = "B — UMAP output 𝑌 (compare to A)"
+            left = "A — ground truth (latent)"
+            right = "B — UMAP output 𝑌"
     return left, right
 
 
@@ -155,6 +155,10 @@ def make_figure(
     frame_index: int | None = None,
     frame_total: int | None = None,
 ) -> go.Figure:
+    """`frame_index`/`frame_total` are accepted for call-site compatibility
+    with apps/umap.py but no longer drive a chart title (dropped below) —
+    `snap.title` (e.g. "Stage 1/3 — kNN graph...") duplicates the pipeline
+    rail card above the chart and the page's own progress bar text."""
     labels = snap.labels
     colours = _colours(labels)
     n = snap.X.shape[0]
@@ -251,26 +255,9 @@ def make_figure(
     fig.update_xaxes(scaleanchor="y", scaleratio=1, row=1, col=1)
     fig.update_xaxes(scaleanchor="y2", scaleratio=1, row=1, col=2)
 
-    title_main = snap.title
-    if frame_index is not None and frame_total is not None:
-        title_main = (
-            f"{snap.title}<br><sup>Frame {frame_index + 1} / {frame_total} · "
-            "use ◀ ▶ to walk the pipeline in order</sup>"
-        )
-
-    fig.update_layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text=title_main, x=0.5, font=dict(size=14, color="#18181b")),
-        legend=dict(
-            orientation="h", yanchor="bottom", y=-0.24, x=0.5, xanchor="center",
-            bgcolor="rgba(255,255,255,0.9)", bordercolor="#e4e4e7", borderwidth=1,
-            font=dict(size=12),
-        ),
-        margin=dict(l=50, r=30, t=95, b=100),
-        height=580,
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-    )
+    apply_theme(fig, None, height=580, showlegend=True)
+    # Re-apply the shared font to the "A"/"B" panel titles (make_subplots
+    # annotations) — apply_theme only sets the top-level layout font.
     for annotation in fig.layout.annotations:
-        annotation.font = dict(family=_FONT_FAMILY, size=13, color="#3f3f46")
+        annotation.font = dict(family=_FONT_FAMILY, size=11.5, color="#3f3f46")
     return fig

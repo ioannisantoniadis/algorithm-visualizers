@@ -25,13 +25,13 @@ from __future__ import annotations
 import numpy as np
 import plotly.graph_objects as go
 
+from common.theme import base_layout
 from .algorithm import Snapshot
 
 # Shared portfolio palette — kept in sync with .streamlit/config.toml's
 # theme.chartCategoricalColors so every chart matches the app chrome.
 _PALETTE = ["#6366f1", "#14b8a6", "#f59e0b", "#f43f5e", "#0ea5e9",
             "#8b5cf6", "#84cc16", "#fb923c", "#06b6d4", "#ec4899"]
-_FONT_FAMILY = "Inter, -apple-system, Segoe UI, sans-serif"
 
 
 def _cluster_colour(k: int, n_clusters: int) -> list[str]:
@@ -109,35 +109,8 @@ def _make_frame(
     return go.Frame(data=traces, name=frame_name, layout=go.Layout(title_text=snap.title))
 
 
-# ---------------------------------------------------------------------------
-# Shared layout helper — matches the palette/typography used across the
-# whole portfolio (see the sibling dbscan-viz repo's
-# dbscan/visualize.py::_base_layout for the canonical recipe).
-# ---------------------------------------------------------------------------
-
-def _base_layout(title: str, X: np.ndarray, height: int = 560, pad: float = 0.3) -> go.Layout:
-    axis_style = dict(
-        showgrid=True, gridcolor="#eef0f4", gridwidth=1,
-        zeroline=False, showline=True, linecolor="#e4e4e7", linewidth=1,
-    )
-    return go.Layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text=title, x=0.5, xanchor="center",
-                   font=dict(size=16, color="#18181b")),
-        xaxis=dict(**axis_style, title="x₁",
-                   range=[float(X[:, 0].min()) - pad, float(X[:, 0].max()) + pad]),
-        yaxis=dict(**axis_style, title="x₂",
-                   range=[float(X[:, 1].min()) - pad, float(X[:, 1].max()) + pad],
-                   scaleanchor="x"),
-        legend=dict(orientation="v", x=1.02, y=1,
-                    bgcolor="rgba(255,255,255,0.9)",
-                    bordercolor="#e4e4e7", borderwidth=1,
-                    font=dict(size=12)),
-        margin=dict(l=40, r=180, t=60, b=40),
-        height=height,
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-    )
+def _axis_range(X: np.ndarray, axis: int, pad: float) -> list[float]:
+    return [float(X[:, axis].min()) - pad, float(X[:, axis].max()) + pad]
 
 
 def build_figure(snapshots: list[Snapshot]) -> go.Figure:
@@ -172,7 +145,12 @@ def build_figure(snapshots: list[Snapshot]) -> go.Figure:
     # ----------------------------------------------------------------
     # Initial display = first frame's data
     # ----------------------------------------------------------------
-    layout = _base_layout(snapshots[0].title, X)
+    pad = 0.3
+    layout = base_layout(
+        None,  # per-frame title — already shown in the page's progress bar
+        xaxis=dict(title="x₁", range=_axis_range(X, 0, pad)),
+        yaxis=dict(title="x₂", range=_axis_range(X, 1, pad), scaleanchor="x"),
+    )
     layout.update(
         sliders=[
             dict(
@@ -272,12 +250,16 @@ def make_picker_figure(
         title_text = f"All {k} centroids placed — press 'Run K-means' below"
 
     # Axis ranges: pin to the data so the plot doesn't jump between clicks
-    layout = _base_layout(title_text, X, height=500, pad=0.5)
-    layout.update(
-        margin=dict(l=40, r=40, t=60, b=40),
+    pad = 0.5
+    layout = base_layout(
+        title_text,  # dynamic instruction, not shown elsewhere on the page — keep
+        height=500,
         showlegend=False,
-        clickmode="event+select",
+        xaxis=dict(title="x₁", range=_axis_range(X, 0, pad)),
+        yaxis=dict(title="x₂", range=_axis_range(X, 1, pad), scaleanchor="x"),
+        margin=dict(l=40, r=40, t=60, b=40),
     )
+    layout.update(clickmode="event+select")
 
     fig = go.Figure(data=traces, layout=layout)
     return fig
@@ -293,6 +275,12 @@ def make_static_figure(snap: Snapshot) -> go.Figure:
     colours = _cluster_colour(0, n_clusters)
     frame = _make_frame(snap, n_clusters, colours, "static")
 
-    layout = _base_layout(snap.title, snap.points)
+    pad = 0.3
+    X = snap.points
+    layout = base_layout(
+        None,  # per-frame title — already shown in the page's progress bar
+        xaxis=dict(title="x₁", range=_axis_range(X, 0, pad)),
+        yaxis=dict(title="x₂", range=_axis_range(X, 1, pad), scaleanchor="x"),
+    )
     fig = go.Figure(data=frame.data, layout=layout)
     return fig

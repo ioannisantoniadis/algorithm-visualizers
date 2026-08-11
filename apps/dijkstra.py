@@ -10,6 +10,7 @@ import time
 import numpy as np
 import streamlit as st
 
+from common.ui import about_section, params_rail
 from dijkstra.algorithm import search
 from dijkstra.data import PRESET_KEYS, PRESET_NAMES, make_grid
 from dijkstra.visualize import make_editor_figure, make_static_figure
@@ -22,11 +23,17 @@ def _k(name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Sidebar — grid source
+# Header — title first, caption filled in after params are known below
 # ---------------------------------------------------------------------------
-st.sidebar.markdown("##### 🧭 GRID & SEARCH")
+st.title("Dijkstra & A* — Shortest Path on a Grid")
+caption_slot = st.empty()
 
-with st.sidebar.container(border=True):
+col_params, col_main = st.columns([1, 3])
+
+# ---------------------------------------------------------------------------
+# Params rail — grid source
+# ---------------------------------------------------------------------------
+with params_rail(col_params, "Grid & Search"):
     mode = st.radio(
         "Grid source",
         ["Preset", "Draw your own"],
@@ -54,11 +61,9 @@ with st.sidebar.container(border=True):
     )
 
 # ---------------------------------------------------------------------------
-# Sidebar — algorithm
+# Params rail — algorithm
 # ---------------------------------------------------------------------------
-st.sidebar.markdown("##### ALGORITHM")
-
-with st.sidebar.container(border=True):
+with params_rail(col_params, "Algorithm"):
     algorithm_name = st.radio("Search algorithm", ["Dijkstra", "A*"], key=_k("algorithm_name"))
     algorithm_key = "astar" if algorithm_name == "A*" else "dijkstra"
 
@@ -72,34 +77,35 @@ with st.sidebar.container(border=True):
     )
     heuristic_key = "euclidean" if heuristic_name == "Euclidean" else "manhattan"
 
-_PRESET_NOTES = {
-    "open": "**Open field** — no obstacles. With start and goal at opposite "
-            "corners, *every* cell lies on some shortest path, so Dijkstra "
-            "and A* actually visit the same number of nodes here — the "
-            "heuristic only pays off once there's something to route around.",
-    "random_obstacles": "**Random obstacles** — scattered impassable blocks. "
-            "Watch A* hug the straight line to the goal far more closely "
-            "than Dijkstra, which explores evenly in every direction.",
-    "maze": "**Maze** — a perfect maze has exactly one true path, so dead "
-            "ends look identical to the real corridor until fully explored. "
-            "This is the clearest demo of how much the A* heuristic prunes "
-            "compared to undirected Dijkstra.",
-    "weighted_terrain": "**Weighted terrain** — patches of costly mud/water. "
-            "The cheapest path is not always the shortest one in steps — "
-            "that distinction is the whole point of Dijkstra over plain BFS.",
-}
-if mode == "Preset":
-    st.sidebar.info(_PRESET_NOTES[preset_key])
-else:
-    st.sidebar.info(
-        "**Draw your own** — pick a brush below the grid to add walls, "
-        "erase them, or move the start (S) / goal (G), then press "
-        "**▶ Run search**."
-    )
+with col_params:
+    _PRESET_NOTES = {
+        "open": "**Open field** — no obstacles. With start and goal at opposite "
+                "corners, *every* cell lies on some shortest path, so Dijkstra "
+                "and A* actually visit the same number of nodes here — the "
+                "heuristic only pays off once there's something to route around.",
+        "random_obstacles": "**Random obstacles** — scattered impassable blocks. "
+                "Watch A* hug the straight line to the goal far more closely "
+                "than Dijkstra, which explores evenly in every direction.",
+        "maze": "**Maze** — a perfect maze has exactly one true path, so dead "
+                "ends look identical to the real corridor until fully explored. "
+                "This is the clearest demo of how much the A* heuristic prunes "
+                "compared to undirected Dijkstra.",
+        "weighted_terrain": "**Weighted terrain** — patches of costly mud/water. "
+                "The cheapest path is not always the shortest one in steps — "
+                "that distinction is the whole point of Dijkstra over plain BFS.",
+    }
+    if mode == "Preset":
+        st.info(_PRESET_NOTES[preset_key])
+    else:
+        st.info(
+            "**Draw your own** — pick a brush below the grid to add walls, "
+            "erase them, or move the start (S) / goal (G), then press "
+            "**▶ Run search**."
+        )
 
-with st.sidebar.expander("How the search works", expanded=False):
-    st.markdown(
-        """
+    with st.expander("How the search works", expanded=False):
+        st.markdown(
+            """
 1. Start at cost 0; every other cell is "unknown" (∞)
 2. Pop the cheapest node from the priority queue, **finalise** it
 3. **Relax** its neighbours — if reaching them via this node is cheaper,
@@ -110,7 +116,7 @@ A* adds a heuristic estimate of the remaining distance to each node's
 priority, so it tries goal-ward nodes first without ever giving up
 Dijkstra's optimality guarantee.
 """
-    )
+        )
 
 # ---------------------------------------------------------------------------
 # Session state — grid generation / regeneration
@@ -184,12 +190,7 @@ start = st.session_state[_k("start")]
 goal = st.session_state[_k("goal")]
 actual_rows, actual_cols = grid_cost.shape
 
-# ---------------------------------------------------------------------------
-# Main area header
-# ---------------------------------------------------------------------------
-st.title("Dijkstra & A* — Shortest Path on a Grid")
-
-st.caption(
+caption_slot.caption(
     f"Grid: **{actual_rows}×{actual_cols}** | "
     f"Algorithm: **{algorithm_name}** | "
     + (f"Heuristic: **{heuristic_name}** | " if algorithm_key == "astar" else "")
@@ -234,185 +235,206 @@ def _apply_brush(r: int, c: int, brush: str) -> bool:
     return False
 
 
-# ---------------------------------------------------------------------------
-# EDIT GATE — shown until a search has been run on the current grid
-# ---------------------------------------------------------------------------
-snapshots = st.session_state.get(_k("snapshots"))
-
-if snapshots is None:
-    st.info(
-        "Pick a brush, click cells on the grid to edit it, then press "
-        "**▶ Run search**."
+with col_main:
+    about_section(
+        "Dijkstra's algorithm (1959) is the foundation of virtually every "
+        "shortest-path system in use today, from GPS navigation to network "
+        "routing. A* (1968) is its direct extension: add an admissible "
+        "heuristic that estimates the remaining distance to the goal, and the "
+        "search becomes goal-directed instead of expanding equally in every "
+        "direction — without sacrificing the guarantee of finding the "
+        "*optimal* path. The **Nodes visited** comparison this page draws "
+        "between the two algorithms on an identical grid is the textbook "
+        "demonstration of exactly how much that heuristic saves, and the "
+        "**Maze** preset is where the difference is starkest.",
+        [
+            "Dijkstra, E.W. (1959). \"A Note on Two Problems in Connexion with "
+            "Graphs.\" *Numerische Mathematik.*",
+            "Hart, P.E., Nilsson, N.J., & Raphael, B. (1968). \"A Formal Basis "
+            "for the Heuristic Determination of Minimum Cost Paths.\" *IEEE "
+            "Transactions on Systems Science and Cybernetics.*",
+        ],
     )
+
+    # -------------------------------------------------------------------
+    # EDIT GATE — shown until a search has been run on the current grid
+    # -------------------------------------------------------------------
+    snapshots = st.session_state.get(_k("snapshots"))
+
+    if snapshots is None:
+        st.info(
+            "Pick a brush, click cells on the grid to edit it, then press "
+            "**▶ Run search**."
+        )
+
+        with st.container(border=True):
+            bcol1, bcol2, bcol3 = st.columns([2, 2, 4])
+            with bcol1:
+                brush = st.radio(
+                    "Brush", ["Wall", "Erase", "Move start", "Move goal"],
+                    horizontal=False, label_visibility="collapsed",
+                    key=_k("brush"),
+                )
+            with bcol2:
+                if st.button("🗑 Clear walls", use_container_width=True, key=_k("clear_walls")):
+                    st.session_state[_k("grid_cost")] = np.where(
+                        np.isfinite(st.session_state[_k("grid_cost")]), st.session_state[_k("grid_cost")], 1.0
+                    )
+                    st.rerun()
+                run_pressed = st.button("▶ Run search", use_container_width=True, type="primary", key=_k("run_search"))
+
+            if run_pressed:
+                _run_search()
+                st.rerun()
+
+            editor_fig = make_editor_figure(grid_cost, start, goal)
+            event = st.plotly_chart(
+                editor_fig,
+                use_container_width=True,
+                on_select="rerun",
+                selection_mode="points",
+                key=_k("editor_chart"),
+                config={"displayModeBar": False},
+            )
+
+            if event and event.selection and event.selection.points:
+                pt = event.selection.points[0]
+                r, c = int(round(pt["y"])), int(round(pt["x"]))
+                if _apply_brush(r, c, brush):
+                    st.session_state[_k("snapshots")] = None
+                    st.rerun()
+
+        st.stop()
+
+    # After a run: offer a quick way back into edit mode
+    st.info(
+        "Search complete on this grid. Press **✏️ Edit grid** to move the "
+        "start/goal or change walls, or adjust the sidebar to try a different "
+        "grid or algorithm."
+    )
+    if st.button("✏️ Edit grid", key=_k("edit_grid")):
+        st.session_state[_k("snapshots")] = None
+        st.rerun()
+
+    # -------------------------------------------------------------------
+    # Playback controls (Streamlit-native — Prev/Next + Play/Pause via rerun)
+    # -------------------------------------------------------------------
+    n_steps = len(snapshots)
+    step_idx: int = st.session_state.get(_k("step_idx"), 0)
+    step_idx = max(0, min(step_idx, n_steps - 1))
+    st.session_state[_k("step_idx")] = step_idx
+    playing: bool = st.session_state.get(_k("playing"), False)
 
     with st.container(border=True):
-        bcol1, bcol2, bcol3 = st.columns([2, 2, 4])
-        with bcol1:
-            brush = st.radio(
-                "Brush", ["Wall", "Erase", "Move start", "Move goal"],
-                horizontal=False, label_visibility="collapsed",
-                key=_k("brush"),
+        speed = st.select_slider(
+            "Playback speed", options=["0.5×", "1×", "2×", "4×", "8×"], value="2×",
+            label_visibility="collapsed",
+            key=_k("speed"),
+        )
+        DELAY = {"0.5×": 0.9, "1×": 0.45, "2×": 0.22, "4×": 0.11, "8×": 0.05}[speed]
+
+        col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
+
+        with col_prev:
+            if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
+                st.session_state[_k("step_idx")] = max(0, step_idx - 1)
+                st.rerun()
+
+        with col_play:
+            if st.button("▶  Play", use_container_width=True,
+                         disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
+                st.session_state[_k("playing")] = True
+                st.rerun()
+
+        with col_pause:
+            if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
+                st.session_state[_k("playing")] = False
+                st.rerun()
+
+        with col_next:
+            if st.button("Next ▶", use_container_width=True,
+                         disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
+                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                st.rerun()
+
+        with col_speed:
+            st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
+
+        snap = snapshots[step_idx]
+        st.progress(step_idx / max(n_steps - 1, 1), text=f"Frame {step_idx + 1} / {n_steps} — {snap.title}")
+
+    # -------------------------------------------------------------------
+    # Chart + priority-queue panel
+    # -------------------------------------------------------------------
+    col_chart, col_queue = st.columns([3, 1])
+
+    with col_chart, st.container(border=True):
+        fig = make_static_figure(snap)
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart"))
+
+    with col_queue, st.container(border=True):
+        st.markdown("**Priority queue** (best entries)")
+        if snap.frontier_preview:
+            for priority, g, (r, c) in snap.frontier_preview:
+                marker = "👉 " if snap.current == (r, c) else ""
+                st.text(f"{marker}({r:>2},{c:>2})  f={priority:5.1f}  g={g:5.1f}")
+        else:
+            st.text("— empty —")
+
+    with st.container(border=True):
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Phase", snap.phase.replace("_", " ").capitalize())
+        m2.metric("Nodes visited", str(snap.step))
+        if snap.phase == "found":
+            m3.metric("Path cost", f"{snap.total_cost:.1f}")
+        elif snap.phase == "no_path":
+            m3.metric("Status", "Unreachable ✗")
+        else:
+            m3.metric("Open set size", str(int(np.count_nonzero(snap.open_mask))))
+
+    compare = st.session_state.get(_k("compare"))
+    if compare and snap.phase == "found":
+        dij, a_star = compare.get("dijkstra"), compare.get("astar")
+        if dij and a_star:
+            diff_pct = 100 * (dij - a_star) / dij
+            comparison = (
+                f"A* explored **{diff_pct:.0f}% fewer** nodes to find the same optimal path."
+                if diff_pct > 0
+                else "both algorithms explored about the same number of nodes here."
             )
-        with bcol2:
-            if st.button("🗑 Clear walls", use_container_width=True, key=_k("clear_walls")):
-                st.session_state[_k("grid_cost")] = np.where(
-                    np.isfinite(st.session_state[_k("grid_cost")]), st.session_state[_k("grid_cost")], 1.0
-                )
-                st.rerun()
-            run_pressed = st.button("▶ Run search", use_container_width=True, type="primary", key=_k("run_search"))
+            st.caption(
+                f"On this exact grid: Dijkstra visits **{dij}** nodes, A* visits "
+                f"**{a_star}** nodes — {comparison}"
+            )
 
-        if run_pressed:
-            _run_search()
-            st.rerun()
-
-        editor_fig = make_editor_figure(grid_cost, start, goal)
-        event = st.plotly_chart(
-            editor_fig,
-            use_container_width=True,
-            on_select="rerun",
-            selection_mode="points",
-            key=_k("editor_chart"),
-            config={"displayModeBar": False},
+    if snap.phase == "init":
+        st.info(
+            "**Ready** — the priority queue holds only the start node at cost 0. "
+            "Press **▶ Play** or **Next ▶** to begin expanding the frontier."
         )
-
-        if event and event.selection and event.selection.points:
-            pt = event.selection.points[0]
-            r, c = int(round(pt["y"])), int(round(pt["x"]))
-            if _apply_brush(r, c, brush):
-                st.session_state[_k("snapshots")] = None
-                st.rerun()
-
-    st.stop()
-
-# After a run: offer a quick way back into edit mode
-st.info(
-    "Search complete on this grid. Press **✏️ Edit grid** to move the "
-    "start/goal or change walls, or adjust the sidebar to try a different "
-    "grid or algorithm."
-)
-if st.button("✏️ Edit grid", key=_k("edit_grid")):
-    st.session_state[_k("snapshots")] = None
-    st.rerun()
-
-# ---------------------------------------------------------------------------
-# Playback controls (Streamlit-native — Prev/Next + Play/Pause via rerun)
-# ---------------------------------------------------------------------------
-n_steps = len(snapshots)
-step_idx: int = st.session_state.get(_k("step_idx"), 0)
-step_idx = max(0, min(step_idx, n_steps - 1))
-st.session_state[_k("step_idx")] = step_idx
-playing: bool = st.session_state.get(_k("playing"), False)
-
-with st.container(border=True):
-    speed = st.select_slider(
-        "Playback speed", options=["0.5×", "1×", "2×", "4×", "8×"], value="2×",
-        label_visibility="collapsed",
-        key=_k("speed"),
-    )
-    DELAY = {"0.5×": 0.9, "1×": 0.45, "2×": 0.22, "4×": 0.11, "8×": 0.05}[speed]
-
-    col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
-
-    with col_prev:
-        if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
-            st.session_state[_k("step_idx")] = max(0, step_idx - 1)
-            st.rerun()
-
-    with col_play:
-        if st.button("▶  Play", use_container_width=True,
-                     disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
-            st.session_state[_k("playing")] = True
-            st.rerun()
-
-    with col_pause:
-        if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
-            st.session_state[_k("playing")] = False
-            st.rerun()
-
-    with col_next:
-        if st.button("Next ▶", use_container_width=True,
-                     disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
-            st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-            st.rerun()
-
-    with col_speed:
-        st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
-
-    snap = snapshots[step_idx]
-    st.progress(step_idx / max(n_steps - 1, 1), text=f"Frame {step_idx + 1} / {n_steps} — {snap.title}")
-
-# ---------------------------------------------------------------------------
-# Chart + priority-queue panel
-# ---------------------------------------------------------------------------
-col_chart, col_queue = st.columns([3, 1])
-
-with col_chart, st.container(border=True):
-    fig = make_static_figure(snap)
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart"))
-
-with col_queue, st.container(border=True):
-    st.markdown("**Priority queue** (best entries)")
-    if snap.frontier_preview:
-        for priority, g, (r, c) in snap.frontier_preview:
-            marker = "👉 " if snap.current == (r, c) else ""
-            st.text(f"{marker}({r:>2},{c:>2})  f={priority:5.1f}  g={g:5.1f}")
+    elif snap.phase == "visit":
+        n_upd = len(snap.updated)
+        st.info(
+            f"**Visiting ({snap.current[0]}, {snap.current[1]})** — this node's "
+            f"shortest distance is now locked in. {n_upd} neighbour"
+            f"{'s' if n_upd != 1 else ''} got a cheaper known cost and "
+            f"{'were' if n_upd != 1 else 'was'} pushed into the queue."
+        )
+    elif snap.phase == "found":
+        st.success(
+            f"**Goal reached** — cheapest path costs **{snap.total_cost:.1f}** "
+            f"over {len(snap.path) - 1} steps, after visiting {snap.step} nodes."
+        )
     else:
-        st.text("— empty —")
-
-with st.container(border=True):
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Phase", snap.phase.replace("_", " ").capitalize())
-    m2.metric("Nodes visited", str(snap.step))
-    if snap.phase == "found":
-        m3.metric("Path cost", f"{snap.total_cost:.1f}")
-    elif snap.phase == "no_path":
-        m3.metric("Status", "Unreachable ✗")
-    else:
-        m3.metric("Open set size", str(int(np.count_nonzero(snap.open_mask))))
-
-compare = st.session_state.get(_k("compare"))
-if compare and snap.phase == "found":
-    dij, a_star = compare.get("dijkstra"), compare.get("astar")
-    if dij and a_star:
-        diff_pct = 100 * (dij - a_star) / dij
-        comparison = (
-            f"A* explored **{diff_pct:.0f}% fewer** nodes to find the same optimal path."
-            if diff_pct > 0
-            else "both algorithms explored about the same number of nodes here."
-        )
-        st.caption(
-            f"On this exact grid: Dijkstra visits **{dij}** nodes, A* visits "
-            f"**{a_star}** nodes — {comparison}"
+        st.error(
+            f"**No path exists** — the queue emptied after visiting {snap.step} "
+            "nodes without ever reaching the goal. Walls fully separate start "
+            "from goal."
         )
 
-if snap.phase == "init":
-    st.info(
-        "**Ready** — the priority queue holds only the start node at cost 0. "
-        "Press **▶ Play** or **Next ▶** to begin expanding the frontier."
-    )
-elif snap.phase == "visit":
-    n_upd = len(snap.updated)
-    st.info(
-        f"**Visiting ({snap.current[0]}, {snap.current[1]})** — this node's "
-        f"shortest distance is now locked in. {n_upd} neighbour"
-        f"{'s' if n_upd != 1 else ''} got a cheaper known cost and "
-        f"{'were' if n_upd != 1 else 'was'} pushed into the queue."
-    )
-elif snap.phase == "found":
-    st.success(
-        f"**Goal reached** — cheapest path costs **{snap.total_cost:.1f}** "
-        f"over {len(snap.path) - 1} steps, after visiting {snap.step} nodes."
-    )
-else:
-    st.error(
-        f"**No path exists** — the queue emptied after visiting {snap.step} "
-        "nodes without ever reaching the goal. Walls fully separate start "
-        "from goal."
-    )
-
-with st.expander("📖 Reading the animation"):
-    st.markdown(
-        """
+    with st.expander("📖 Reading the animation"):
+        st.markdown(
+            """
 - **Terrain shading** — darker/browner cells cost more to enter (mud, water)
 - **Dark grey / black** — walls, impassable
 - **Light indigo** — closed / finalised nodes (shortest distance locked in)
@@ -424,16 +446,16 @@ with st.expander("📖 Reading the animation"):
 - The **priority queue** panel on the right shows the best few candidates
   waiting to be expanded next — `f` is priority (`g` for Dijkstra, `g+h` for A*)
 """
-    )
+        )
 
-# ---------------------------------------------------------------------------
-# Auto-advance (must be last — triggers rerun after a delay)
-# ---------------------------------------------------------------------------
-if playing:
-    if step_idx < n_steps - 1:
-        time.sleep(DELAY)
-        st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-        st.rerun()
-    else:
-        st.session_state[_k("playing")] = False
-        st.rerun()
+    # -------------------------------------------------------------------
+    # Auto-advance (must be last — triggers rerun after a delay)
+    # -------------------------------------------------------------------
+    if playing:
+        if step_idx < n_steps - 1:
+            time.sleep(DELAY)
+            st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+            st.rerun()
+        else:
+            st.session_state[_k("playing")] = False
+            st.rerun()

@@ -20,18 +20,13 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from common.theme import PALETTE, apply_theme
 from .algorithm import Snapshot, autocorrelation
 
-# Shared portfolio palette — kept in sync with .streamlit/config.toml's
-# theme.chartCategoricalColors so every chart matches the app chrome.
-_PALETTE = ["#6366f1", "#14b8a6", "#f59e0b", "#f43f5e", "#0ea5e9",
-            "#8b5cf6", "#84cc16", "#fb923c", "#06b6d4", "#ec4899"]
-_FONT_FAMILY = "Inter, -apple-system, Segoe UI, sans-serif"
-
-_ACCEPT_COLOUR = _PALETTE[0]  # indigo — the chain / accepted states
-_REJECT_COLOUR = _PALETTE[3]  # rose   — a rejected proposal
-_TRUE_COLOUR = _PALETTE[1]    # teal   — ground-truth marginal curve
-_CONTOUR_COLOUR = _PALETTE[0]  # indigo — target-density contour fill
+_ACCEPT_COLOUR = PALETTE[0]  # indigo — the chain / accepted states
+_REJECT_COLOUR = PALETTE[3]  # rose   — a rejected proposal
+_TRUE_COLOUR = PALETTE[1]    # teal   — ground-truth marginal curve
+_CONTOUR_COLOUR = PALETTE[0]  # indigo — target-density contour fill
 
 
 def make_figure(
@@ -194,17 +189,7 @@ def make_figure(
     fig.update_yaxes(showgrid=True, gridcolor="#eef0f4", gridwidth=1,
                       showline=True, linecolor="#e4e4e7", linewidth=1)
 
-    fig.update_layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text=snap.title, x=0.5, xanchor="center", y=0.99, yanchor="top",
-                    font=dict(size=16, color="#18181b")),
-        height=740,
-        showlegend=True,
-        legend=dict(orientation="h", yanchor="top", y=0.92, x=0.5, xanchor="center",
-                    bgcolor="rgba(255,255,255,0.9)", bordercolor="#e4e4e7", borderwidth=1,
-                    font=dict(size=12)),
-        margin=dict(l=50, r=30, t=130, b=40),
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-    )
+    # Title dropped — snap.title (e.g. "Step N — Accepted") is per-frame and
+    # already shown verbatim in the page's progress bar text.
+    apply_theme(fig, None, height=740, showlegend=True)
     return fig

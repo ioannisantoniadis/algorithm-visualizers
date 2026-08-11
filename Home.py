@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import streamlit as st
 
+from common.ui import category_accent, global_css
+
 st.set_page_config(
     page_title="Algorithm Visualisers",
     page_icon="🧪",
@@ -15,60 +17,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-st.markdown("""
-<style>
-[data-testid="stAppDeployButton"] { display: none; }
-.block-container { padding-top: 2.5rem; padding-bottom: 3rem; }
-[data-testid="stAlert"] { border-radius: 0.75rem; }
-
-/* ---- Sidebar navigation: clear hierarchy between section labels and links ---- */
-[data-testid="stSidebarNavLink"] [data-testid="stIconEmoji"] { display: none; }
-
-[data-testid="stNavSectionHeader"] {
-    margin-top: 1.15rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid #e4e4e7;
-}
-[data-testid="stSidebarNavItems"] > div:first-child [data-testid="stNavSectionHeader"] {
-    margin-top: 0;
-    padding-top: 0;
-    border-top: none;
-}
-[data-testid="stNavSectionHeader"] p {
-    font-size: 0.68rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    color: #a1a1aa;
-    margin: 0;
-}
-[data-testid="stNavSectionHeader"] [data-testid="stIconMaterial"] {
-    font-size: 0.9rem;
-    color: #a1a1aa;
-}
-
-[data-testid="stSidebarNavLink"] {
-    border-radius: 0.5rem;
-    margin: 0.05rem 0;
-    transition: background-color .1s ease;
-}
-[data-testid="stSidebarNavLink"] p {
-    font-size: 0.875rem;
-    color: #3f3f46;
-    font-weight: 400;
-}
-[data-testid="stSidebarNavLink"]:hover {
-    background-color: #eef0fe;
-}
-[data-testid="stSidebarNavLink"][aria-current="page"] {
-    background-color: #eef0fe;
-}
-[data-testid="stSidebarNavLink"][aria-current="page"] p {
-    color: #6366f1;
-    font-weight: 600;
-}
-</style>
-""", unsafe_allow_html=True)
+st.markdown(global_css(), unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Page catalogue — (module path, title, one-line descriptor)
@@ -116,22 +65,37 @@ CATALOGUE = {
 def _home_page() -> None:
     # Scoped to this page only: the whole card becomes the click target (the
     # page_link is stretched to cover it and visually hidden), with a hover
-    # lift instead of a separate "Open" button. :has(stPageLink) means this
-    # never matches the bordered containers used elsewhere in the app.
+    # lift instead of a separate "Open" button.
+    #
+    # The selector requires the page_link to be the *immediate* child of an
+    # *immediate* stElementContainer child — i.e. exactly the shape of a
+    # card's own `st.container(border=True)` block in the loop below.
+    # A looser `:has(> div [data-testid="stPageLink"])` (any descendant,
+    # any depth) also matches every ancestor further up the tree — the
+    # column wrapping each card, and the page's own outermost content
+    # block — because a div-shaped immediate child containing a page_link
+    # *somewhere* inside it is true all the way up. That bug made the
+    # entire page (hero text down through every category) register as one
+    # giant hover/click target sharing this card styling, while the real
+    # click hit-boxes stayed correctly card-sized — so hovering anywhere
+    # showed a pointer cursor and, on hover, drew this rule's border/shadow
+    # around the whole page, and a click that happened to land on a real
+    # card navigated with no visible cause. Keep this selector exact rather
+    # than reverting to the looser form.
     st.markdown("""
     <style>
-    div[data-testid="stVerticalBlock"]:has(> div [data-testid="stPageLink"]) {
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] > div[data-testid="stPageLink"]) {
         position: relative;
         cursor: pointer;
         transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
     }
-    div[data-testid="stVerticalBlock"]:has(> div [data-testid="stPageLink"]):hover {
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] > div[data-testid="stPageLink"]):hover {
         border-color: #6366f1;
         box-shadow: 0 6px 20px rgba(99, 102, 241, 0.16);
         transform: translateY(-2px);
     }
-    div[data-testid="stVerticalBlock"]:has(> div [data-testid="stPageLink"])
-        div[data-testid="stElementContainer"]:has([data-testid="stPageLink"]) {
+    div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] > div[data-testid="stPageLink"])
+        div[data-testid="stElementContainer"]:has(> div[data-testid="stPageLink"]) {
         position: absolute !important;
         inset: 0 !important;
         width: 100% !important;
@@ -147,24 +111,70 @@ def _home_page() -> None:
         height: 100% !important;
         opacity: 0;
     }
+
+    /* ---- Hero ---- */
+    .hero-eyebrow {
+        color: #6366f1; font-weight: 600; font-size: 0.8rem;
+        letter-spacing: 0.08em; margin-bottom: 0.4rem;
+    }
+    .hero-stats {
+        display: flex; gap: 2rem; margin: 1.25rem 0 1.75rem 0;
+        flex-wrap: wrap;
+    }
+    .hero-stat-value {
+        font-size: 1.4rem; font-weight: 700; color: #18181b; line-height: 1.1;
+    }
+    .hero-stat-label {
+        font-size: 0.78rem; color: #71717a; margin-top: 0.15rem;
+    }
+
+    /* ---- Category section headers ---- */
+    .category-header {
+        display: flex; align-items: center; gap: 0.6rem;
+        margin: 2.25rem 0 1rem 0;
+    }
+    .category-accent-bar {
+        width: 4px; height: 1.35rem; border-radius: 999px;
+    }
+    .category-title {
+        font-size: 1.35rem; font-weight: 700; color: #18181b;
+    }
+
+    /* ---- Persistent "Open" affordance on every card (not hover-only) ---- */
+    .card-open {
+        margin-top: 0.85rem; font-size: 0.8rem; font-weight: 600;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown(
-        "<p style='color:#6366f1; font-weight:600; font-size:0.8rem; "
-        "letter-spacing:0.08em; margin-bottom:-0.3rem;'>ALGORITHM VISUALISER PORTFOLIO</p>",
-        unsafe_allow_html=True,
-    )
+    st.markdown("<p class='hero-eyebrow'>ALGORITHM VISUALISER PORTFOLIO</p>", unsafe_allow_html=True)
     st.title("20 classic algorithms, from scratch")
     st.caption(
         "Every visualiser below is a from-scratch NumPy implementation — no scikit-learn "
         "or PyTorch in the core algorithm — paired with an interactive Streamlit + Plotly "
         "step-by-step walkthrough. Pick a category, pick an algorithm, and step through it."
     )
+
+    n_algos = sum(len(items) for items in CATALOGUE.values())
+    st.markdown(f"""
+    <div class="hero-stats">
+        <div><div class="hero-stat-value">{n_algos}</div><div class="hero-stat-label">algorithms</div></div>
+        <div><div class="hero-stat-value">{len(CATALOGUE)}</div><div class="hero-stat-label">categories</div></div>
+        <div><div class="hero-stat-value">100%</div><div class="hero-stat-label">NumPy, no sklearn / PyTorch in the core</div></div>
+    </div>
+    """, unsafe_allow_html=True)
+
     st.divider()
 
     for category, items in CATALOGUE.items():
-        st.subheader(category)
+        accent = category_accent(category)
+        st.markdown(
+            f"""<div class="category-header">
+                <span class="category-accent-bar" style="background:{accent};"></span>
+                <span class="category-title">{category}</span>
+            </div>""",
+            unsafe_allow_html=True,
+        )
         cols = st.columns(3)
         for i, (path, title, blurb) in enumerate(items):
             page = PAGES_BY_PATH[path]
@@ -173,7 +183,10 @@ def _home_page() -> None:
                     st.markdown(f"#### {title}")
                     st.caption(blurb)
                     st.page_link(page, label="Open visualiser")
-        st.write("")
+                    st.markdown(
+                        f'<div class="card-open" style="color:{accent};">Open visualiser →</div>',
+                        unsafe_allow_html=True,
+                    )
 
 
 # ---------------------------------------------------------------------------

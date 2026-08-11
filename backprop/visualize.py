@@ -30,6 +30,7 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from common.theme import apply_theme, base_layout
 from .algorithm import Snapshot
 
 # ---------------------------------------------------------------------------
@@ -39,7 +40,6 @@ from .algorithm import Snapshot
 
 _PALETTE = ["#6366f1", "#14b8a6", "#f59e0b", "#f43f5e", "#0ea5e9",
             "#8b5cf6", "#84cc16", "#fb923c", "#06b6d4", "#ec4899"]
-_FONT_FAMILY = "Inter, -apple-system, Segoe UI, sans-serif"
 
 _CLASS_COLOURS = [_PALETTE[0], _PALETTE[3]]  # class 0 (indigo), class 1 (rose)
 _BOUNDARY_SCALE = [[0.0, "#e5e5ff"], [0.5, "#fbfbfd"], [1.0, "#fde1e7"]]
@@ -48,21 +48,6 @@ _NEG_EDGE = _PALETTE[3]   # negative weight / gradient — rose
 _NODE_FILL = "#f8f8fb"
 _NODE_LINE = "#3f3f46"
 _ACT_SCALE = [[0.0, _PALETTE[3]], [0.5, "#fbfbfd"], [1.0, _PALETTE[0]]]
-
-_AXIS_STYLE = dict(
-    showgrid=True, gridcolor="#eef0f4", gridwidth=1,
-    zeroline=False, showline=True, linecolor="#e4e4e7", linewidth=1,
-)
-
-
-def _base_layout(**kwargs) -> dict:
-    """Shared layout kwargs applied to every figure in this module."""
-    return dict(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-        **kwargs,
-    )
 
 
 def _layer_x_positions(n_layers: int) -> np.ndarray:
@@ -118,19 +103,11 @@ def make_boundary_figure(snap: Snapshot, grid_x: np.ndarray, grid_y: np.ndarray)
 
     fig = go.Figure(
         data=traces,
-        layout=go.Layout(
-            **_base_layout(
-                title=dict(text=snap.title, x=0.5, xanchor="center",
-                           font=dict(size=16, color="#18181b")),
-                xaxis=dict(**_AXIS_STYLE, title="x₁"),
-                yaxis=dict(**_AXIS_STYLE, title="x₂", scaleanchor="x"),
-                legend=dict(orientation="h", y=-0.15, x=0.5, xanchor="center",
-                            bgcolor="rgba(255,255,255,0.9)",
-                            bordercolor="#e4e4e7", borderwidth=1,
-                            font=dict(size=12)),
-                margin=dict(l=40, r=20, t=50, b=40),
-                height=480,
-            ),
+        layout=base_layout(
+            None,  # per-frame title — already shown in the page's progress bar
+            xaxis=dict(title="x₁"),
+            yaxis=dict(title="x₂", scaleanchor="x"),
+            height=480,
         ),
     )
     return fig
@@ -215,22 +192,16 @@ def make_network_figure(snap: Snapshot, layer_sizes: list[int]) -> go.Figure:
     ]
 
     subtitle = "gradients (backward pass)" if show_grad else "weights"
-    fig = go.Figure(
-        data=edge_traces + node_traces,
-        layout=go.Layout(
-            **_base_layout(
-                title=dict(
-                    text=f"Network — {subtitle}", x=0.5, xanchor="center",
-                    font=dict(size=15, color="#18181b"),
-                ),
-                xaxis=dict(visible=False, range=[-0.15, 1.15]),
-                yaxis=dict(visible=False),
-                annotations=annotations,
-                margin=dict(l=20, r=20, t=45, b=60),
-                height=480,
-            ),
-        ),
+    layout = base_layout(
+        f"Network — {subtitle}",  # not shown elsewhere on the page — keep
+        xaxis=dict(visible=False, range=[-0.15, 1.15]),
+        yaxis=dict(visible=False),
+        showlegend=False,
+        margin=dict(l=20, r=20, b=60),
+        height=480,
     )
+    layout.update(annotations=annotations)
+    fig = go.Figure(data=edge_traces + node_traces, layout=layout)
     return fig
 
 
@@ -277,12 +248,11 @@ def make_loss_figure(
             )
 
     fig.update_layout(
-        **_base_layout(
-            title=dict(text="Training loss", x=0.5, xanchor="center",
-                       font=dict(size=15, color="#18181b")),
-            xaxis=dict(**_AXIS_STYLE, title="Epoch"),
-            yaxis=dict(**_AXIS_STYLE, title="Binary cross-entropy"),
-            margin=dict(l=50, r=20, t=45, b=40),
+        base_layout(
+            "Training loss",  # static caption, not shown elsewhere — keep
+            xaxis=dict(title="Epoch"),
+            yaxis=dict(title="Binary cross-entropy"),
+            margin=dict(l=50, t=45),
             height=300,
             showlegend=False,
         ),
@@ -325,10 +295,6 @@ def make_activation_heatmap_figure(
 
     fig.update_xaxes(visible=False)
     fig.update_yaxes(visible=False)
-    fig.update_layout(
-        **_base_layout(
-            height=220 * n_rows,
-            margin=dict(l=10, r=10, t=30, b=10),
-        ),
-    )
+    apply_theme(fig, height=220 * n_rows, showlegend=False)
+    fig.update_layout(margin=dict(l=10, r=10, t=30, b=10))
     return fig

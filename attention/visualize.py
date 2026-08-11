@@ -7,9 +7,17 @@ make_embedding_heatmap(tokens, X, blocks)      token embeddings, block-annotated
 make_stage_figure(snapshot)                    dispatches on snapshot.phase/substep —
                                                 the figure shown by the step-through /
                                                 auto-play controls
-make_attention_heatmap(weights, tokens, title) rows=query, cols=key, cell=weight
+make_attention_heatmap(weights, tokens)        rows=query, cols=key, cell=weight
 make_multihead_figure(results, tokens)         small-multiples, one heatmap per head
 make_explain_word_figure(results, tokens, i)   "who does token i attend to" bar chart
+
+Chart titles: every figure used inside the per-frame walkthrough (Section 2
+of apps/attention.py — `make_embedding_heatmap` when reused there, and
+everything reachable through `make_stage_figure`) drops its Plotly title,
+since that exact text is already shown in the page's own progress bar
+(`st.progress(..., text=f"... {snapshots[step_idx].title}")`) and metrics
+row. `make_multihead_figure` and `make_explain_word_figure` (Sections 3/4,
+always visible, independent of playback) keep their static captions.
 """
 
 from __future__ import annotations
@@ -18,50 +26,20 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from common.theme import PALETTE, apply_theme, base_layout
 from .algorithm import HeadResult, Snapshot
 from .data import EmbeddingBlocks
-
-# Shared portfolio palette — kept in sync with .streamlit/config.toml's
-# theme.chartCategoricalColors so every categorical chart (e.g. the
-# "explain a word" bar chart, one colour per head) matches the app chrome.
-# Attention heatmaps intentionally use sequential/diverging colorscales
-# instead (Blues / RdBu / Viridis) since cell value, not category identity,
-# is what needs to read clearly there.
-_PALETTE = ["#6366f1", "#14b8a6", "#f59e0b", "#f43f5e", "#0ea5e9",
-            "#8b5cf6", "#84cc16", "#fb923c", "#06b6d4", "#ec4899"]
-_FONT_FAMILY = "Inter, -apple-system, Segoe UI, sans-serif"
-_PLOT_BG = "#fbfbfd"
-_PAPER_BG = "rgba(0,0,0,0)"
-_GRID_COLOR = "#eef0f4"
-_LINE_COLOR = "#e4e4e7"
-
-_AXIS_STYLE = dict(
-    showgrid=True, gridcolor=_GRID_COLOR, gridwidth=1,
-    zeroline=False, showline=True, linecolor=_LINE_COLOR, linewidth=1,
-)
 
 
 def _dim_labels(n: int, prefix: str = "d") -> list[str]:
     return [f"{prefix}{i}" for i in range(n)]
 
 
-def _base_layout(title: str, height: int = 420) -> dict:
-    return dict(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text=title, x=0.5, xanchor="center", y=0.97, yanchor="top",
-                    font=dict(size=15, color="#18181b")),
-        margin=dict(l=60, r=30, t=55, b=45),
-        height=height,
-        plot_bgcolor=_PLOT_BG,
-        paper_bgcolor=_PAPER_BG,
-    )
-
-
 def make_matrix_heatmap(
     matrix: np.ndarray,
     row_labels: list[str],
     col_labels: list[str],
-    title: str,
+    title: str | None,
     colorscale: str = "Viridis",
     zmid: float | None = None,
     annotate: bool = True,
@@ -82,7 +60,7 @@ def make_matrix_heatmap(
         colorbar=dict(thickness=14),
         hovertemplate="row=%{y}<br>col=%{x}<br>value=%{z:.3f}<extra></extra>",
     )
-    fig = go.Figure(data=[heat], layout=go.Layout(**_base_layout(title)))
+    fig = go.Figure(data=[heat], layout=base_layout(title, height=420, showlegend=False))
     fig.update_yaxes(autorange="reversed")
     return fig
 
@@ -90,10 +68,14 @@ def make_matrix_heatmap(
 def make_embedding_heatmap(tokens: list[str], X: np.ndarray, blocks: EmbeddingBlocks) -> go.Figure:
     """Embedding matrix with the three feature blocks (role / entity /
     position) shaded so it's visible which columns carry which meaning.
+    The block names are annotated directly on the chart below (see
+    `fig.add_annotation` calls), so the title would only repeat them —
+    dropped, since this figure is also reused as-is inside the per-frame
+    walkthrough (Section 2) where a title would duplicate the progress bar.
     """
     fig = make_matrix_heatmap(
         X, tokens, _dim_labels(X.shape[1]),
-        title="Token embeddings — role | entity | position blocks",
+        title=None,
         colorscale="RdBu", zmid=0, annotate=False,
     )
     # Vertical separators + labels between the three blocks
@@ -129,22 +111,19 @@ def make_qkv_figure(hr: HeadResult, tokens: list[str]) -> go.Figure:
             row=1, col=col,
         )
     fig.update_yaxes(autorange="reversed")
-    fig.update_layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text=f"{hr.name} head — Query / Key / Value projections",
-                    x=0.5, xanchor="center", y=0.97, yanchor="top",
-                    font=dict(size=15, color="#18181b")),
-        height=420, plot_bgcolor=_PLOT_BG, paper_bgcolor=_PAPER_BG,
-        margin=dict(l=50, r=30, t=70, b=40),
-    )
+    # Per-frame walkthrough figure (Section 2) — title dropped, duplicated
+    # by the page's progress bar / metrics row (head name + stage).
+    apply_theme(fig, None, height=420, showlegend=False)
     return fig
 
 
-def make_attention_heatmap(weights: np.ndarray, tokens: list[str], title: str) -> go.Figure:
+def make_attention_heatmap(weights: np.ndarray, tokens: list[str]) -> go.Figure:
     """The core deliverable: rows = query tokens, cols = key tokens, cell =
-    attention weight (softmax output, rows sum to 1)."""
+    attention weight (softmax output, rows sum to 1). Only reachable via the
+    per-frame walkthrough (`make_stage_figure`'s "softmax" substep), so its
+    title is always dropped — duplicated by the progress bar."""
     fig = make_matrix_heatmap(
-        weights, tokens, tokens, title=title,
+        weights, tokens, tokens, title=None,
         colorscale="Blues", zmid=None, annotate=True,
     )
     fig.update_layout(
@@ -158,6 +137,10 @@ def make_stage_figure(snap: Snapshot) -> go.Figure:
     """Dispatch on the snapshot's phase/substep to render exactly the
     matrix that stage of the pipeline is about. Used by both the manual
     step-through and the auto-play loop in app.py.
+
+    Every branch drops its chart title: the page's progress bar already
+    shows `snapshots[step_idx].title`, and the metrics row above the chart
+    shows phase/head/stage, so a Plotly title here would only repeat them.
     """
     tokens = snap.tokens
 
@@ -167,13 +150,13 @@ def make_stage_figure(snap: Snapshot) -> go.Figure:
         # plain heatmap here so this function stays total.
         return make_matrix_heatmap(
             snap.embeddings, tokens, _dim_labels(snap.embeddings.shape[1]),
-            title="Token embeddings", colorscale="RdBu", zmid=0, annotate=False,
+            title=None, colorscale="RdBu", zmid=0, annotate=False,
         )
 
     if snap.phase == "combine":
         return make_matrix_heatmap(
             snap.context, tokens, _dim_labels(snap.context.shape[1]),
-            title="Final context vectors (embedding + Σ head outputs)",
+            title=None,
             colorscale="RdBu", zmid=0, annotate=False,
         )
 
@@ -183,23 +166,21 @@ def make_stage_figure(snap: Snapshot) -> go.Figure:
     if snap.substep == "scores":
         return make_matrix_heatmap(
             hr.scores_raw, tokens, tokens,
-            title=f"{hr.name} head — raw scores QKᵀ",
+            title=None,
             colorscale="RdBu", zmid=0,
         )
     if snap.substep == "scale":
         return make_matrix_heatmap(
             hr.scores_scaled, tokens, tokens,
-            title=f"{hr.name} head — scaled scores (÷√{hr.spec.d_k})",
+            title=None,
             colorscale="RdBu", zmid=0,
         )
     if snap.substep == "softmax":
-        return make_attention_heatmap(
-            hr.weights, tokens, title=f"{hr.name} head — attention weights"
-        )
+        return make_attention_heatmap(hr.weights, tokens)
     if snap.substep == "output":
         return make_matrix_heatmap(
             hr.head_output, tokens, _dim_labels(hr.spec.d_k),
-            title=f"{hr.name} head — output = weights · V",
+            title=None,
             colorscale="RdBu", zmid=0,
         )
     raise ValueError(f"Unhandled snapshot: phase={snap.phase!r} substep={snap.substep!r}")
@@ -226,14 +207,11 @@ def make_multihead_figure(results: list[HeadResult], tokens: list[str]) -> go.Fi
         )
     fig.update_yaxes(autorange="reversed")
     fig.update_xaxes(tickangle=45)
-    fig.update_layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        height=420 if n <= 2 else 380,
-        plot_bgcolor=_PLOT_BG, paper_bgcolor=_PAPER_BG,
-        margin=dict(l=50, r=30, t=60, b=60),
-        title=dict(text="Attention weights — every head, same sentence",
-                    x=0.5, xanchor="center", y=0.97, yanchor="top",
-                    font=dict(size=15, color="#18181b")),
+    # Static caption, always visible (Section 3), not shown anywhere else —
+    # kept.
+    apply_theme(
+        fig, "Attention weights — every head, same sentence",
+        height=420 if n <= 2 else 380, showlegend=False,
     )
     return fig
 
@@ -254,25 +232,18 @@ def make_explain_word_figure(
                 name=name,
                 x=tokens,
                 y=weights[query_idx],
-                marker_color=_PALETTE[i % len(_PALETTE)],
+                marker_color=PALETTE[i % len(PALETTE)],
                 hovertemplate="key=%{x}<br>weight=%{y:.3f}<extra>" + name + "</extra>",
             )
         )
-    fig.update_layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(
-            text=f"What does “{tokens[query_idx]}” attend to?",
-            x=0.5, xanchor="center", y=0.97, yanchor="top",
-            font=dict(size=15, color="#18181b"),
-        ),
-        barmode="group",
-        xaxis=dict(title="key token", **_AXIS_STYLE),
-        yaxis=dict(title="attention weight", range=[0, 1], **_AXIS_STYLE),
+    # Static caption, always visible (Section 4), not shown anywhere else —
+    # kept (it's dynamic on the selected query token, but not per-frame).
+    layout = base_layout(
+        f"What does “{tokens[query_idx]}” attend to?",
         height=420,
-        plot_bgcolor=_PLOT_BG, paper_bgcolor=_PAPER_BG,
-        margin=dict(l=50, r=20, t=55, b=90),
-        legend=dict(orientation="h", x=0.5, xanchor="center", y=-0.28, yanchor="top",
-                     bgcolor="rgba(255,255,255,0.9)", bordercolor=_LINE_COLOR,
-                     borderwidth=1, font=dict(size=12)),
+        xaxis=dict(title="key token"),
+        yaxis=dict(title="attention weight", range=[0, 1]),
     )
+    fig.update_layout(layout)
+    fig.update_layout(barmode="group")
     return fig

@@ -30,6 +30,7 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from common.theme import apply_theme, base_layout
 from .algorithm import NoiseSchedule, Snapshot
 
 # Shared portfolio palette — kept in sync with .streamlit/config.toml's
@@ -38,7 +39,6 @@ _PALETTE = ["#6366f1", "#14b8a6", "#f59e0b", "#f43f5e", "#0ea5e9",
             "#8b5cf6", "#84cc16", "#fb923c", "#06b6d4", "#ec4899"]
 
 _NOISE_COLOUR = "#a1a1aa"  # neutral grey used for the reference / noise overlay
-_FONT_FAMILY = "Inter, -apple-system, Segoe UI, sans-serif"
 
 
 def _colours_for(labels: np.ndarray) -> list[str]:
@@ -113,26 +113,16 @@ def make_point_figure(
             )
         )
 
-    axis_style = dict(
-        showgrid=True, gridcolor="#eef0f4", gridwidth=1,
-        zeroline=False, showline=True, linecolor="#e4e4e7", linewidth=1,
-    )
+    # `title` (or its fallback, snap.title) is always a per-frame label that
+    # duplicates the page's own progress-bar text at both call sites in
+    # apps/diffusion.py — so it's intentionally not forwarded to the chart.
     fig = go.Figure(
         data=traces,
-        layout=go.Layout(
-            font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-            title=dict(text=title or snap.title, x=0.5, xanchor="center",
-                       font=dict(size=16, color="#18181b")),
-            xaxis=dict(**axis_style, title="x₁", range=x_range),
-            yaxis=dict(**axis_style, title="x₂", range=y_range, scaleanchor="x"),
-            legend=dict(orientation="v", x=1.02, y=1,
-                        bgcolor="rgba(255,255,255,0.9)",
-                        bordercolor="#e4e4e7", borderwidth=1,
-                        font=dict(size=12)),
-            margin=dict(l=40, r=180, t=60, b=40),
+        layout=base_layout(
+            None,
             height=520,
-            plot_bgcolor="#fbfbfd",
-            paper_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(title="x₁", range=x_range),
+            yaxis=dict(title="x₂", range=y_range, scaleanchor="x"),
         ),
     )
     return fig
@@ -149,7 +139,10 @@ def make_schedule_figure(schedule: NoiseSchedule) -> go.Figure:
 
     fig = make_subplots(
         rows=1, cols=2,
-        subplot_titles=("Noise added per step (β_t)", "Signal-to-noise ratio (log scale)"),
+        # Short — these sit above narrow subplot columns and Plotly
+        # doesn't wrap/truncate subplot_titles text.
+        subplot_titles=("Noise (β_t)", "SNR (log)"),
+        horizontal_spacing=0.12,
     )
     fig.add_trace(
         go.Scatter(x=t, y=schedule.betas, mode="lines", line=dict(color=_PALETTE[3], width=2), name="β_t"),
@@ -170,15 +163,10 @@ def make_schedule_figure(schedule: NoiseSchedule) -> go.Figure:
     fig.update_yaxes(title="value", **grid_style, row=1, col=1)
     fig.update_xaxes(title="diffusion step t", **grid_style, row=1, col=1)
     fig.update_xaxes(title="diffusion step t", **grid_style, row=1, col=2)
-    fig.update_layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
+    apply_theme(
+        fig,
+        f"Noise schedule — {schedule.kind}, T={schedule.T}",  # static caption, not per-frame
         height=340,
-        margin=dict(l=40, r=20, t=50, b=40),
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", y=-0.25, font=dict(size=12)),
-        title=dict(text=f"Noise schedule — {schedule.kind}, T={schedule.T}", x=0.5, xanchor="center",
-                   font=dict(size=16, color="#18181b")),
     )
     return fig
 
@@ -186,20 +174,14 @@ def make_schedule_figure(schedule: NoiseSchedule) -> go.Figure:
 def make_loss_figure(loss_history: list[float]) -> go.Figure:
     """Training loss curve for the score network (log-scale y-axis)."""
     epochs = np.arange(1, len(loss_history) + 1)
-    axis_style = dict(showgrid=True, gridcolor="#eef0f4", gridwidth=1,
-                       zeroline=False, showline=True, linecolor="#e4e4e7", linewidth=1)
     fig = go.Figure(
         data=[go.Scatter(x=epochs, y=loss_history, mode="lines", line=dict(color=_PALETTE[5], width=2))],
-        layout=go.Layout(
-            font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-            title=dict(text="Score network training loss  E[‖ε − ε_θ(x_t, t)‖²]", x=0.5, xanchor="center",
-                       font=dict(size=14, color="#18181b")),
-            xaxis=dict(title="epoch", **axis_style),
-            yaxis=dict(title="loss (log scale)", type="log", **axis_style),
+        layout=base_layout(
+            "Training loss — E[‖ε − ε̂‖²]",  # static caption, kept short so it doesn't overflow a narrow card
             height=320,
-            margin=dict(l=50, r=20, t=50, b=40),
-            plot_bgcolor="#fbfbfd",
-            paper_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(title="epoch"),
+            yaxis=dict(title="loss (log scale)", type="log"),
+            showlegend=False,
         ),
     )
     return fig

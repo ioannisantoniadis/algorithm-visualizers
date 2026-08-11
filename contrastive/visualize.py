@@ -36,6 +36,7 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from common.theme import apply_theme, base_layout
 from .algorithm import Snapshot
 
 # Shared portfolio palette — kept in sync with .streamlit/config.toml's
@@ -45,16 +46,10 @@ _PALETTE = ["#6366f1", "#14b8a6", "#f59e0b", "#f43f5e", "#0ea5e9",
 _POS_LINE = "#14b8a6"   # positive pair connector — teal, "pull together"
 _NEG_LINE = "#f43f5e"   # negative-similarity curve — rose, "push apart"
 _GREY = "#a1a1aa"
-_FONT_FAMILY = "Inter, -apple-system, Segoe UI, sans-serif"
 
 _AXIS_STYLE = dict(
     showgrid=True, gridcolor="#eef0f4", gridwidth=1,
     zeroline=False, showline=True, linecolor="#e4e4e7", linewidth=1,
-)
-_LEGEND_RIGHT = dict(
-    orientation="v", x=1.02, y=1, xanchor="left", yanchor="top",
-    bgcolor="rgba(255,255,255,0.9)", bordercolor="#e4e4e7", borderwidth=1,
-    font=dict(size=11),
 )
 
 
@@ -125,17 +120,11 @@ def make_input_figure(snap: Snapshot, n_clusters: int) -> go.Figure:
 
     fig = go.Figure(
         data=traces,
-        layout=go.Layout(
-            font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-            title=dict(text="Input space — this step's augmented views", x=0.5,
-                       xanchor="center", font=dict(size=15, color="#18181b")),
-            xaxis=dict(**_AXIS_STYLE, title="x₁"),
-            yaxis=dict(**_AXIS_STYLE, title="x₂", scaleanchor="x"),
-            legend=dict(**_LEGEND_RIGHT),
-            margin=dict(l=40, r=170, t=50, b=40),
+        layout=base_layout(
+            "Input space — this step's augmented views",  # static caption, not shown elsewhere
             height=480,
-            plot_bgcolor="#fbfbfd",
-            paper_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(title="x₁"),
+            yaxis=dict(title="x₂", scaleanchor="x"),
         ),
     )
     return fig
@@ -182,20 +171,14 @@ def make_embedding_figure(snap: Snapshot, n_clusters: int) -> go.Figure:
 
     fig = go.Figure(
         data=traces,
-        layout=go.Layout(
-            font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-            title=dict(text="Normalised embedding — unit circle", x=0.5,
-                       xanchor="center", font=dict(size=15, color="#18181b")),
-            xaxis=dict(**_AXIS_STYLE, title="e₁", range=[-1.25, 1.25]),
-            yaxis=dict(**_AXIS_STYLE, title="e₂", range=[-1.25, 1.25], scaleanchor="x"),
-            shapes=[_unit_circle_shape()],
-            legend=dict(**_LEGEND_RIGHT),
-            margin=dict(l=40, r=170, t=50, b=40),
+        layout=base_layout(
+            "Normalised embedding — unit circle",  # static caption, not shown elsewhere
             height=480,
-            plot_bgcolor="#fbfbfd",
-            paper_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(title="e₁", range=[-1.25, 1.25]),
+            yaxis=dict(title="e₂", range=[-1.25, 1.25], scaleanchor="x"),
         ),
     )
+    fig.update_layout(shapes=[_unit_circle_shape()])
     return fig
 
 
@@ -229,14 +212,7 @@ def make_before_after_figure(snap_init: Snapshot, snap_final: Snapshot, n_cluste
     fig.update_xaxes(**_AXIS_STYLE, range=[-1.25, 1.25])
     fig.update_yaxes(**_AXIS_STYLE, range=[-1.25, 1.25], scaleanchor="x", scaleratio=1)
     fig.update_yaxes(scaleanchor="x2", scaleratio=1, row=1, col=2)
-    fig.update_layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        height=460,
-        margin=dict(l=30, r=170, t=55, b=30),
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-        legend=dict(**_LEGEND_RIGHT),
-    )
+    apply_theme(fig, None, height=460)  # subplot_titles already caption each panel
     fig.update_annotations(font=dict(size=14, color="#18181b"))
     return fig
 
@@ -268,21 +244,13 @@ def make_similarity_heatmap(snap: Snapshot) -> go.Figure:
             name="Positive pair", showlegend=True,
         )
     )
-    fig.update_layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text="Batch cosine-similarity matrix (2B × 2B)", x=0.5,
-                   xanchor="center", font=dict(size=15, color="#18181b")),
+    fig.update_layout(base_layout(
+        "Batch cosine-similarity matrix (2B × 2B)",  # static caption, not shown elsewhere
+        height=460,
         xaxis=dict(title="view index", showgrid=False),
         yaxis=dict(title="view index", showgrid=False, autorange="reversed"),
-        legend=dict(
-            orientation="h", x=0, y=1.1, xanchor="left", yanchor="bottom",
-            bgcolor="rgba(255,255,255,0.9)", font=dict(size=11),
-        ),
-        height=460,
-        margin=dict(l=50, r=90, t=75, b=40),
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-    )
+        margin=dict(r=90),  # extra right space reserved for the colorbar (colorbar x=1.15)
+    ))
     return fig
 
 
@@ -305,12 +273,12 @@ def make_loss_figure(history: list[tuple[int, float, float, float]], current_ste
     )
     fig.add_trace(
         go.Scatter(x=steps, y=pos_sims, mode="lines", line=dict(color=_POS_LINE, width=1.6, dash="dash"),
-                   name="Mean positive-pair cos sim"),
+                   name="Pos-pair cos sim"),
         secondary_y=True,
     )
     fig.add_trace(
         go.Scatter(x=steps, y=neg_sims, mode="lines", line=dict(color=_NEG_LINE, width=1.6, dash="dash"),
-                   name="Mean negative-pair cos sim"),
+                   name="Neg-pair cos sim"),
         secondary_y=True,
     )
 
@@ -328,13 +296,5 @@ def make_loss_figure(history: list[tuple[int, float, float, float]], current_ste
     fig.update_yaxes(title_text="cosine similarity", secondary_y=True,
                       range=[-1.05, 1.05], showgrid=False, zeroline=False)
     fig.update_xaxes(title_text="Training step", showgrid=True, gridcolor="#eef0f4", zeroline=False)
-    fig.update_layout(
-        font=dict(family=_FONT_FAMILY, size=13, color="#3f3f46"),
-        title=dict(text="Training progress", x=0.5, xanchor="center", font=dict(size=15, color="#18181b")),
-        height=340,
-        margin=dict(l=55, r=170, t=50, b=45),
-        plot_bgcolor="#fbfbfd",
-        paper_bgcolor="rgba(0,0,0,0)",
-        legend=dict(**_LEGEND_RIGHT),
-    )
+    apply_theme(fig, "Training progress", height=340)  # static caption, not shown elsewhere
     return fig

@@ -10,6 +10,7 @@ import time
 import numpy as np
 import streamlit as st
 
+from common.ui import about_section, params_rail
 from umapviz.algorithm import fit
 from umapviz.data import DATASET_KEYS, DATASET_NAMES, latent_intrinsic_dim, make_dataset
 from umapviz.visualize import make_figure
@@ -86,9 +87,12 @@ def _frame_panels_explainer(snap, dataset_key: str) -> str:
     return "\n\n".join(a_parts) + "\n\n" + b
 
 
-st.sidebar.markdown("##### ⚙️ DATA")
+st.title("UMAP — Topological graph + embedding")
+caption_slot = st.empty()
 
-with st.sidebar.container(border=True):
+col_params, col_main = st.columns([1, 3])
+
+with params_rail(col_params, "Data"):
     ds_name = st.selectbox("Synthetic dataset", DATASET_NAMES, index=1, key=_k("ds_name"))
     ds_key = DATASET_KEYS[DATASET_NAMES.index(ds_name)]
     n_points = st.slider("Points", 60, 380, 200, 10, key=_k("n_points"))
@@ -113,9 +117,7 @@ with st.sidebar.container(border=True):
     )
     seed = st.number_input("Random seed", 0, 9999, 7, 1, key=_k("seed"))
 
-st.sidebar.markdown("##### UMAP HYPERPARAMETERS")
-
-with st.sidebar.container(border=True):
+with params_rail(col_params, "UMAP hyperparameters"):
     n_neighbors = st.slider("n_neighbors", 3, 45, 15, key=_k("n_neighbors"))
     min_dist = st.slider("min_dist (embedding geometry)", 0.0, 0.5, 0.15, 0.01, key=_k("min_dist"))
     spread = st.slider("spread (a,b curve fit)", 0.25, 2.0, 1.0, 0.05, key=_k("spread"))
@@ -125,10 +127,11 @@ with st.sidebar.container(border=True):
     neg_rate = st.slider("Negative samples / edge", 1, 12, 5, key=_k("neg_rate"))
     regenerate = st.button("🔄 Re-run", use_container_width=True, key=_k("regen"))
 
-st.sidebar.info(
-    "Use **Next** from left to right: ① kNN → ② fuzzy → ③ embedding. "
-    "The **blue explainer** under the controls always describes **panels A and B** for the current step."
-)
+with col_params:
+    st.info(
+        "Use **Next** from left to right: ① kNN → ② fuzzy → ③ embedding. "
+        "The **blue explainer** under the controls always describes **panels A and B** for the current step."
+    )
 
 _param = (
     ds_key,
@@ -187,40 +190,59 @@ st.session_state[_k("step_idx")] = step_idx
 playing = bool(st.session_state.get(_k("playing"), False))
 snap = snaps[step_idx]
 
-st.title("UMAP — Topological graph + embedding")
-
-st.caption(
+caption_slot.caption(
     f"**Dataset:** {ds_name} | **n**={n_points}, **D**={ambient_dim} | "
     f"n_neighbors={n_neighbors}, min_dist={min_dist}"
 )
 
-with st.container(border=True):
-    _render_pipeline_rail(snap.phase)
+with col_main:
+    about_section(
+        "UMAP is the modern default for visualizing high-dimensional data — "
+        "single-cell genomics, embeddings from language/vision models, and so "
+        "on — largely replacing t-SNE because it's dramatically faster on large "
+        "datasets and better preserves *global* structure alongside local "
+        "neighbourhoods. It's grounded in a genuinely different mathematical "
+        "foundation, Riemannian geometry and algebraic topology, than the "
+        "purely probabilistic approach t-SNE takes, even though the two "
+        "produce visually similar-looking maps. The three-stage pipeline this "
+        "page walks through — build a k-NN graph, turn it into one fuzzy "
+        "weighted graph, then optimise a 2-D layout to match it — *is* that "
+        "topological idea made concrete.",
+        [
+            "McInnes, L., Healy, J., & Melville, J. (2018). "
+            "[\"UMAP: Uniform Manifold Approximation and Projection for "
+            "Dimension Reduction.\"](https://arxiv.org/abs/1802.03426) "
+            "arXiv:1802.03426.",
+        ],
+    )
 
-left, right = st.columns([1.05, 1.45], gap="medium")
-
-with left:
     with st.container(border=True):
-        st.markdown("### This frame")
-        step_no = {"knn": 1, "fuzzy": 2, "embed": 3}[snap.phase]
-        st.caption(
-            f"Pipeline step **{step_no}/3** — highlighted above. "
-            f"Phase **{snap.phase}**; animation frame **{step_idx + 1}/{n_steps}**."
-        )
-        m1, m2 = st.columns(2)
-        m1.metric("Phase", snap.phase)
-        if snap.phase == "embed":
-            m2.metric("SGD epoch", str(snap.step))
-        st.metric("Layout (a, b)", f"{snap.a_param:.3f}, {snap.b_param:.3f}")
-        st.markdown("Low-dimensional pairwise kernel ")
-        st.latex(r"q_{ij} = 1/\bigl(1 + a \,\lVert y_i - y_j \rVert^{2b}\bigr)")
-        st.caption("(a, b) fitted to match min_dist & spread — same convention as umap-learn.")
-        st.markdown("**High-D preview** — variance along first two PCs of **X**:")
-        xv = X - X.mean(0, keepdims=True)
-        _, s, _ = np.linalg.svd(xv, full_matrices=False)
-        st.code(f"Top singular values (relative): {s[0]:.3f}, {s[1]:.3f}, …", language=None)
-        with st.expander("Algorithm stages"):
-            st.markdown("""
+        _render_pipeline_rail(snap.phase)
+
+    left, right = st.columns([1.05, 1.45], gap="medium")
+
+    with left:
+        with st.container(border=True):
+            st.markdown("### This frame")
+            step_no = {"knn": 1, "fuzzy": 2, "embed": 3}[snap.phase]
+            st.caption(
+                f"Pipeline step **{step_no}/3** — highlighted above. "
+                f"Phase **{snap.phase}**; animation frame **{step_idx + 1}/{n_steps}**."
+            )
+            m1, m2 = st.columns(2)
+            m1.metric("Phase", snap.phase)
+            if snap.phase == "embed":
+                m2.metric("SGD epoch", str(snap.step))
+            st.metric("Layout (a, b)", f"{snap.a_param:.3f}, {snap.b_param:.3f}")
+            st.markdown("Low-dimensional pairwise kernel ")
+            st.latex(r"q_{ij} = 1/\bigl(1 + a \,\lVert y_i - y_j \rVert^{2b}\bigr)")
+            st.caption("(a, b) fitted to match min_dist & spread — same convention as umap-learn.")
+            st.markdown("**High-D preview** — variance along first two PCs of **X**:")
+            xv = X - X.mean(0, keepdims=True)
+            _, s, _ = np.linalg.svd(xv, full_matrices=False)
+            st.code(f"Top singular values (relative): {s[0]:.3f}, {s[1]:.3f}, …", language=None)
+            with st.expander("Algorithm stages"):
+                st.markdown("""
 1. **k-NN** in ℝᴰ → local distances
 2. **smooth_knn** normalisation → σᵢ, ρᵢ (local connectivity)
 3. **Membership strengths** → directed fuzzy 1-simplices
@@ -228,46 +250,46 @@ with left:
 5. **SGD** minimises cross-entropy between high-D and low-D fuzzy sets
 """)
 
-with right:
-    with st.container(border=True):
-        speed = st.select_slider("Speed", ["0.5×", "1×", "2×"], "1×", label_visibility="collapsed", key=_k("speed"))
-        delay = {"0.5×": 0.95, "1×": 0.48, "2×": 0.24}[speed]
-        c1, c2, c3, c4 = st.columns([1, 1.1, 1.1, 1])
-        with c1:
-            if st.button("◀", disabled=(step_idx == 0 or playing), key=_k("prev")):
-                st.session_state[_k("step_idx")] = max(0, step_idx - 1)
-                st.rerun()
-        with c2:
-            if st.button("▶ Play", disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
-                st.session_state[_k("playing")] = True
-                st.rerun()
-        with c3:
-            if st.button("⏸", disabled=not playing, key=_k("pause")):
-                st.session_state[_k("playing")] = False
-                st.rerun()
-        with c4:
-            if st.button("Next ▶", disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
-                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-                st.rerun()
+    with right:
+        with st.container(border=True):
+            speed = st.select_slider("Speed", ["0.5×", "1×", "2×"], "1×", label_visibility="collapsed", key=_k("speed"))
+            delay = {"0.5×": 0.95, "1×": 0.48, "2×": 0.24}[speed]
+            c1, c2, c3, c4 = st.columns([1, 1.1, 1.1, 1])
+            with c1:
+                if st.button("◀", disabled=(step_idx == 0 or playing), key=_k("prev")):
+                    st.session_state[_k("step_idx")] = max(0, step_idx - 1)
+                    st.rerun()
+            with c2:
+                if st.button("▶ Play", disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
+                    st.session_state[_k("playing")] = True
+                    st.rerun()
+            with c3:
+                if st.button("⏸", disabled=not playing, key=_k("pause")):
+                    st.session_state[_k("playing")] = False
+                    st.rerun()
+            with c4:
+                if st.button("Next ▶", disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
+                    st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                    st.rerun()
 
-        st.progress(step_idx / max(n_steps - 1, 1), text=f"Frame {step_idx + 1}/{n_steps}")
+            st.progress(step_idx / max(n_steps - 1, 1), text=f"Frame {step_idx + 1}/{n_steps}")
 
-        st.info(_frame_panels_explainer(snap, ds_key))
+            st.info(_frame_panels_explainer(snap, ds_key))
 
-    with st.container(border=True):
-        fig = make_figure(snap, frame_index=step_idx, frame_total=n_steps)
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart"))
-        st.caption("**A / B** in the plot titles match the explainer above.")
+        with st.container(border=True):
+            fig = make_figure(snap, frame_index=step_idx, frame_total=n_steps)
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart"))
+            st.caption("**A / B** in the plot titles match the explainer above.")
 
-if snap.phase == "embed":
-    st.caption(
-        "Note: this is a **readable** SGD loop, not a drop-in for **umap-learn**; global topology should still line up with the reference."
-    )
+    if snap.phase == "embed":
+        st.caption(
+            "Note: this is a **readable** SGD loop, not a drop-in for **umap-learn**; global topology should still line up with the reference."
+        )
 
-if playing and step_idx < n_steps - 1:
-    time.sleep(delay)
-    st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-    st.rerun()
-elif playing:
-    st.session_state[_k("playing")] = False
-    st.rerun()
+    if playing and step_idx < n_steps - 1:
+        time.sleep(delay)
+        st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+        st.rerun()
+    elif playing:
+        st.session_state[_k("playing")] = False
+        st.rerun()
