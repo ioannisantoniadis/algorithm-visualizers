@@ -164,46 +164,59 @@ with col_main:
             "the number of true sinusoids, the reconstruction locks onto the original almost exactly."
         )
 
-        k_key, playing_k_key = _k("topk_value"), _k("playing_k")
-        max_k = len(spec_freqs)
-        st.session_state.setdefault(k_key, 1)
-        st.session_state.setdefault(playing_k_key, False)
-        st.session_state[k_key] = min(st.session_state[k_key], max_k)
+        # ---------------------------------------------------------------
+        # Lives inside a fragment: st.rerun() during auto-increase used to
+        # fully rerun the whole page (title/caption/params rail/about-
+        # section included) several times a second, and small timing
+        # differences in how long each of those took to re-render showed
+        # up as visible flicker/layout shift on every frame. Scoping the
+        # rerun to just this fragment keeps everything above it (and the
+        # sidebar) completely static.
+        # ---------------------------------------------------------------
+        @st.fragment
+        def _topk_playback() -> None:
+            k_key, playing_k_key = _k("topk_value"), _k("playing_k")
+            max_k = len(spec_freqs)
+            st.session_state.setdefault(k_key, 1)
+            st.session_state.setdefault(playing_k_key, False)
+            st.session_state[k_key] = min(st.session_state[k_key], max_k)
 
-        # Auto-advance must happen *before* the toggle/slider widgets below are
-        # instantiated: st.session_state[key] cannot be written once a widget
-        # bound to that key exists in this run (that raises a StreamlitAPIException).
-        # Doing the increment here, then st.rerun()-ing into a fresh script
-        # execution, keeps every write strictly ahead of its widget's creation.
-        if st.session_state[playing_k_key]:
-            if st.session_state[k_key] < max_k:
-                time.sleep(0.35)
-                st.session_state[k_key] += 1
-                st.rerun()
-            else:
-                st.session_state[playing_k_key] = False
-                st.rerun()
+            # Auto-advance must happen *before* the toggle/slider widgets below are
+            # instantiated: st.session_state[key] cannot be written once a widget
+            # bound to that key exists in this run (that raises a StreamlitAPIException).
+            # Doing the increment here, then st.rerun()-ing into a fresh script
+            # execution, keeps every write strictly ahead of its widget's creation.
+            if st.session_state[playing_k_key]:
+                if st.session_state[k_key] < max_k:
+                    time.sleep(0.35)
+                    st.session_state[k_key] += 1
+                    st.rerun(scope="fragment")
+                else:
+                    st.session_state[playing_k_key] = False
+                    st.rerun(scope="fragment")
 
-        with st.container(border=True):
-            col_play, col_slider = st.columns([1, 5])
-            with col_play:
-                playing_k = st.toggle("▶ Auto-increase k", key=playing_k_key)
-            with col_slider:
-                k = st.slider("k — number of frequency components kept", min_value=1, max_value=max_k, key=k_key)
+            with st.container(border=True):
+                col_play, col_slider = st.columns([1, 5])
+                with col_play:
+                    playing_k = st.toggle("▶ Auto-increase k", key=playing_k_key)
+                with col_slider:
+                    k = st.slider("k — number of frequency components kept", min_value=1, max_value=max_k, key=k_key)
 
-        xk, kept_bins = reconstruct_top_k(x, k)
-        with st.container(border=True):
-            st.plotly_chart(make_reconstruction_figure(t, x, xk, k, max_k), use_container_width=True,
-                             config={"displayModeBar": False}, key=_k("chart_reconstruction"))
+            xk, kept_bins = reconstruct_top_k(x, k)
+            with st.container(border=True):
+                st.plotly_chart(make_reconstruction_figure(t, x, xk, k, max_k), use_container_width=True,
+                                 config={"displayModeBar": False}, key=_k("chart_reconstruction"))
 
-        with st.expander("📖 Reading this chart"):
-            st.markdown(
-                "- Grey = original signal, red = reconstruction using only the top **k** "
-                "frequency components (by magnitude)\n"
-                "- Once `k` reaches the number of true sinusoids in the sidebar, the "
-                "reconstruction should match almost exactly, even in the presence of noise\n"
-                "- Extra k beyond that mostly picks up noise, not new signal structure"
-            )
+            with st.expander("📖 Reading this chart"):
+                st.markdown(
+                    "- Grey = original signal, red = reconstruction using only the top **k** "
+                    "frequency components (by magnitude)\n"
+                    "- Once `k` reaches the number of true sinusoids in the sidebar, the "
+                    "reconstruction should match almost exactly, even in the presence of noise\n"
+                    "- Extra k beyond that mostly picks up noise, not new signal structure"
+                )
+
+        _topk_playback()
 
     # -----------------------------------------------------------------------
     # TAB 2 — Butterfly diagram (the core algorithm visualiser)
@@ -229,84 +242,99 @@ with col_main:
         edges = butterfly_edges(diag_n_bits, rev)
 
         n_steps = len(snapshots)
-        step_key, playing_key = _k("bf_step"), _k("bf_playing")
-        st.session_state.setdefault(step_key, 0)
-        st.session_state.setdefault(playing_key, False)
-        step_idx = min(st.session_state[step_key], n_steps - 1)
-        playing = st.session_state[playing_key]
 
-        with st.container(border=True):
-            col_prev, col_play, col_pause, col_next, col_reset = st.columns([1, 1.2, 1.2, 1, 1.2])
-            with col_prev:
-                if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("bf_prev")):
-                    st.session_state[step_key] = step_idx - 1
-                    st.rerun()
-            with col_play:
-                if st.button("▶  Play", use_container_width=True,
-                              disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("bf_play")):
-                    st.session_state[playing_key] = True
-                    st.rerun()
-            with col_pause:
-                if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("bf_pause")):
-                    st.session_state[playing_key] = False
-                    st.rerun()
-            with col_next:
-                if st.button("Next ▶", use_container_width=True,
-                              disabled=(step_idx == n_steps - 1 or playing), key=_k("bf_next")):
-                    st.session_state[step_key] = step_idx + 1
-                    st.rerun()
-            with col_reset:
-                if st.button("⏮ Reset", use_container_width=True, disabled=playing, key=_k("bf_reset")):
-                    st.session_state[step_key] = 0
-                    st.rerun()
+        # -----------------------------------------------------------
+        # Lives inside a fragment: st.rerun() during autoplay used to
+        # fully rerun the whole page (title/caption/params rail/about-
+        # section included) several times a second, and small timing
+        # differences in how long each of those took to re-render
+        # showed up as visible flicker/layout shift on every frame.
+        # Scoping the rerun to just this fragment keeps everything
+        # above it (and the sidebar) completely static.
+        # -----------------------------------------------------------
+        @st.fragment
+        def _butterfly_playback() -> None:
+            step_key, playing_key = _k("bf_step"), _k("bf_playing")
+            st.session_state.setdefault(step_key, 0)
+            st.session_state.setdefault(playing_key, False)
+            step_idx = min(st.session_state[step_key], n_steps - 1)
+            playing = st.session_state[playing_key]
 
-            st.progress(step_idx / max(n_steps - 1, 1),
-                        text=f"Frame {step_idx + 1} / {n_steps} — {snapshots[step_idx].title}")
+            with st.container(border=True):
+                col_prev, col_play, col_pause, col_next, col_reset = st.columns([1, 1.2, 1.2, 1, 1.2])
+                with col_prev:
+                    if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("bf_prev")):
+                        st.session_state[step_key] = step_idx - 1
+                        st.rerun(scope="fragment")
+                with col_play:
+                    if st.button("▶  Play", use_container_width=True,
+                                  disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("bf_play")):
+                        st.session_state[playing_key] = True
+                        st.rerun(scope="fragment")
+                with col_pause:
+                    if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("bf_pause")):
+                        st.session_state[playing_key] = False
+                        st.rerun(scope="fragment")
+                with col_next:
+                    if st.button("Next ▶", use_container_width=True,
+                                  disabled=(step_idx == n_steps - 1 or playing), key=_k("bf_next")):
+                        st.session_state[step_key] = step_idx + 1
+                        st.rerun(scope="fragment")
+                with col_reset:
+                    if st.button("⏮ Reset", use_container_width=True, disabled=playing, key=_k("bf_reset")):
+                        st.session_state[step_key] = 0
+                        st.rerun(scope="fragment")
 
-        snap = snapshots[step_idx]
-        with st.container(border=True):
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Phase", snap.phase.replace("-", " ").capitalize())
-            m2.metric("Span", str(snap.span) if snap.span else "—")
-            m3.metric("Butterflies this stage", str(len(snap.butterflies)))
+                st.progress(step_idx / max(n_steps - 1, 1),
+                            text=f"Frame {step_idx + 1} / {n_steps} — {snapshots[step_idx].title}")
 
-        with st.container(border=True):
-            st.plotly_chart(make_butterfly_figure(snap, edges, diag_n_bits), use_container_width=True,
-                             config={"displayModeBar": False}, key=_k("chart_butterfly"))
+            snap = snapshots[step_idx]
+            with st.container(border=True):
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Phase", snap.phase.replace("-", " ").capitalize())
+                m2.metric("Span", str(snap.span) if snap.span else "—")
+                m3.metric("Butterflies this stage", str(len(snap.butterflies)))
 
-        if snap.phase == "input":
-            st.info("**Natural order** — the raw samples, indexed 0..N-1 as they arrived.")
-        elif snap.phase == "bit-reversal":
-            st.info(
-                "**Bit-reversal permutation** — reorder the input so that index `i` moves to "
-                "the position obtained by reversing the bits of `i`. This reordering is what "
-                "makes the iterative butterfly stages line up correctly — no data changes yet, "
-                "only positions."
-            )
-        else:
-            st.info(
-                f"**Stage {snap.stage}** — {len(snap.butterflies)} butterflies of "
-                f"span {snap.span} run in parallel: `a' = a + W·b`, `b' = a - W·b`. Red edges show "
-                "which pairs from the previous column feed into this one."
-            )
+            with st.container(border=True):
+                st.plotly_chart(make_butterfly_figure(snap, edges, diag_n_bits), use_container_width=True,
+                                 config={"displayModeBar": False}, key=_k("chart_butterfly"))
 
-        with st.expander("📖 Reading the diagram"):
-            st.markdown(
-                "- Columns = stages: natural order → bit-reversed → stage 1 → ... → final spectrum\n"
-                "- Faint grey lines = the full butterfly network for this N (always visible for context)\n"
-                "- **Red lines** = the butterflies that produced the current column from the previous one\n"
-                "- Marker colour = real part, marker size = magnitude — hover a node for exact values\n"
-                "- ◀ Prev / Next ▶ to step manually, ▶ Play to auto-advance through every stage"
-            )
-
-        if playing:
-            if step_idx < n_steps - 1:
-                time.sleep(0.9)
-                st.session_state[step_key] = step_idx + 1
-                st.rerun()
+            if snap.phase == "input":
+                st.info("**Natural order** — the raw samples, indexed 0..N-1 as they arrived.")
+            elif snap.phase == "bit-reversal":
+                st.info(
+                    "**Bit-reversal permutation** — reorder the input so that index `i` moves to "
+                    "the position obtained by reversing the bits of `i`. This reordering is what "
+                    "makes the iterative butterfly stages line up correctly — no data changes yet, "
+                    "only positions."
+                )
             else:
-                st.session_state[playing_key] = False
-                st.rerun()
+                st.info(
+                    f"**Stage {snap.stage}** — {len(snap.butterflies)} butterflies of "
+                    f"span {snap.span} run in parallel: `a' = a + W·b`, `b' = a - W·b`. Red edges show "
+                    "which pairs from the previous column feed into this one."
+                )
+
+            with st.expander("📖 Reading the diagram"):
+                st.markdown(
+                    "- Columns = stages: natural order → bit-reversed → stage 1 → ... → final spectrum\n"
+                    "- Faint grey lines = the full butterfly network for this N (always visible for context)\n"
+                    "- **Red lines** = the butterflies that produced the current column from the previous one\n"
+                    "- Marker colour = real part, marker size = magnitude — hover a node for exact values\n"
+                    "- ◀ Prev / Next ▶ to step manually, ▶ Play to auto-advance through every stage"
+                )
+
+            # Auto-advance (must be last — triggers a fragment-scoped rerun after a delay)
+            if playing:
+                if step_idx < n_steps - 1:
+                    time.sleep(0.9)
+                    st.session_state[step_key] = step_idx + 1
+                    st.rerun(scope="fragment")
+                else:
+                    st.session_state[playing_key] = False
+                    st.rerun(scope="fragment")
+
+        _butterfly_playback()
 
     # -----------------------------------------------------------------------
     # TAB 3 — Spectrogram (chirp: same FFT, applied in short sliding windows)

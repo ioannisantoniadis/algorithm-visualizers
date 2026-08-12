@@ -312,151 +312,156 @@ with col_main:
     n_nodes_actual = len(st.session_state[_k("positions")])
 
     # -------------------------------------------------------------------
-    # Playback controls (Streamlit-native — Prev/Next + Play/Pause via rerun)
+    # Playback controls, chart, panels, metrics, and auto-advance all live
+    # inside one fragment: st.rerun() during autoplay used to fully rerun
+    # the whole page (title/caption/params rail/about-section included)
+    # several times a second, and small timing differences in how long
+    # each of those took to re-render showed up as visible flicker/layout
+    # shift on every frame. Scoping the rerun to just this fragment keeps
+    # everything above it (and the sidebar) completely static.
     # -------------------------------------------------------------------
-    step_idx: int = st.session_state.get(_k("step_idx"), 0)
-    step_idx = max(0, min(step_idx, n_steps - 1))
-    st.session_state[_k("step_idx")] = step_idx
-    playing: bool = st.session_state.get(_k("playing"), False)
+    @st.fragment
+    def _playback() -> None:
+        step_idx: int = st.session_state.get(_k("step_idx"), 0)
+        step_idx = max(0, min(step_idx, n_steps - 1))
+        st.session_state[_k("step_idx")] = step_idx
+        playing: bool = st.session_state.get(_k("playing"), False)
 
-    with st.container(border=True):
-        speed = st.select_slider(
-            "Playback speed", options=["0.5×", "1×", "2×", "4×", "8×"], value="2×",
-            label_visibility="collapsed",
-            key=_k("speed"),
-        )
-        DELAY = {"0.5×": 0.9, "1×": 0.45, "2×": 0.22, "4×": 0.11, "8×": 0.05}[speed]
+        with st.container(border=True):
+            speed = st.select_slider(
+                "Playback speed", options=["0.5×", "1×", "2×", "4×", "8×"], value="2×",
+                label_visibility="collapsed",
+                key=_k("speed"),
+            )
+            DELAY = {"0.5×": 0.9, "1×": 0.45, "2×": 0.22, "4×": 0.11, "8×": 0.05}[speed]
 
-        col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
+            col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
 
-        with col_prev:
-            if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
-                st.session_state[_k("step_idx")] = max(0, step_idx - 1)
-                st.rerun()
+            with col_prev:
+                if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
+                    st.session_state[_k("step_idx")] = max(0, step_idx - 1)
+                    st.rerun(scope="fragment")
 
-        with col_play:
-            if st.button("▶  Play", use_container_width=True,
-                         disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
-                st.session_state[_k("playing")] = True
-                st.rerun()
+            with col_play:
+                if st.button("▶  Play", use_container_width=True,
+                             disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
+                    st.session_state[_k("playing")] = True
+                    st.rerun(scope="fragment")
 
-        with col_pause:
-            if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
-                st.session_state[_k("playing")] = False
-                st.rerun()
+            with col_pause:
+                if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
+                    st.session_state[_k("playing")] = False
+                    st.rerun(scope="fragment")
 
-        with col_next:
-            if st.button("Next ▶", use_container_width=True,
-                         disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
-                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-                st.rerun()
+            with col_next:
+                if st.button("Next ▶", use_container_width=True,
+                             disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
+                    st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                    st.rerun(scope="fragment")
 
-        with col_speed:
-            st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
+            with col_speed:
+                st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
 
-        snap = snapshots[step_idx]
-        st.progress(step_idx / max(n_steps - 1, 1), text=f"Frame {step_idx + 1} / {n_steps} — {snap.title}")
+            snap = snapshots[step_idx]
+            st.progress(step_idx / max(n_steps - 1, 1), text=f"Frame {step_idx + 1} / {n_steps} — {snap.title}")
 
-    # -------------------------------------------------------------------
-    # Chart + side panel (Union-Find sets for Kruskal, frontier for Prim)
-    # -------------------------------------------------------------------
-    with st.container(border=True):
-        chart_col, panel_col = st.columns([3, 1])
+        with st.container(border=True):
+            chart_col, panel_col = st.columns([3, 1])
 
-        with chart_col:
-            fig = make_static_figure(snap)
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("main_chart"))
+            with chart_col:
+                fig = make_static_figure(snap)
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("main_chart"))
 
-        with panel_col:
+            with panel_col:
+                if snap.algorithm == "kruskal":
+                    st.markdown("**Union-Find components**")
+                    if snap.component_id is not None:
+                        comps: dict[int, list[int]] = {}
+                        for node, root in enumerate(snap.component_id.tolist()):
+                            comps.setdefault(root, []).append(node)
+                        for members in sorted(comps.values(), key=lambda m: -len(m)):
+                            st.text("{ " + ", ".join(str(m) for m in sorted(members)) + " }")
+
+                    st.markdown("**Next edges (sorted)**")
+                    order = sorted(snap.edges, key=lambda e: (e.w, e.u, e.v))
+                    upcoming = order[snap.sorted_index:snap.sorted_index + 5]
+                    if upcoming:
+                        for e in upcoming:
+                            st.text(f"({e.u:>2},{e.v:>2})  w={e.w:5.1f}")
+                    else:
+                        st.text("— none left —")
+                else:
+                    st.markdown("**Frontier (cut-crossing edges)**")
+                    if snap.frontier_preview:
+                        for e in snap.frontier_preview:
+                            marker = "👉 " if snap.current_edge == e else ""
+                            st.text(f"{marker}({e.u:>2},{e.v:>2})  w={e.w:5.1f}")
+                    else:
+                        st.text("— empty —")
+
+        with st.container(border=True):
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Phase", snap.phase.replace("_", " ").capitalize())
+            m2.metric("Edges in tree", f"{len(snap.mst_edges)} / {n_nodes_actual - 1}")
+            m3.metric("Total weight", f"{snap.total_weight:.1f}")
+
+        if snap.phase == "init":
             if snap.algorithm == "kruskal":
-                st.markdown("**Union-Find components**")
-                if snap.component_id is not None:
-                    comps: dict[int, list[int]] = {}
-                    for node, root in enumerate(snap.component_id.tolist()):
-                        comps.setdefault(root, []).append(node)
-                    for members in sorted(comps.values(), key=lambda m: -len(m)):
-                        st.text("{ " + ", ".join(str(m) for m in sorted(members)) + " }")
-
-                st.markdown("**Next edges (sorted)**")
-                order = sorted(snap.edges, key=lambda e: (e.w, e.u, e.v))
-                upcoming = order[snap.sorted_index:snap.sorted_index + 5]
-                if upcoming:
-                    for e in upcoming:
-                        st.text(f"({e.u:>2},{e.v:>2})  w={e.w:5.1f}")
-                else:
-                    st.text("— none left —")
+                st.info(
+                    "**Ready** — every node starts as its own component. Press "
+                    "**▶ Play** or **Next ▶** to start working through edges in "
+                    "increasing weight order."
+                )
             else:
-                st.markdown("**Frontier (cut-crossing edges)**")
-                if snap.frontier_preview:
-                    for e in snap.frontier_preview:
-                        marker = "👉 " if snap.current_edge == e else ""
-                        st.text(f"{marker}({e.u:>2},{e.v:>2})  w={e.w:5.1f}")
-                else:
-                    st.text("— empty —")
-
-    with st.container(border=True):
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Phase", snap.phase.replace("_", " ").capitalize())
-        m2.metric("Edges in tree", f"{len(snap.mst_edges)} / {n_nodes_actual - 1}")
-        m3.metric("Total weight", f"{snap.total_weight:.1f}")
-
-    if snap.phase == "init":
-        if snap.algorithm == "kruskal":
-            st.info(
-                "**Ready** — every node starts as its own component. Press "
-                "**▶ Play** or **Next ▶** to start working through edges in "
-                "increasing weight order."
-            )
-        else:
-            # Read the actual start node back off the snapshot's own in_tree
-            # mask (ground truth) rather than the raw start_node widget value —
-            # the widget's value gets clamped to a valid node index inside
-            # _run_algorithm, so echoing it unclamped here could contradict
-            # the node actually highlighted green in the chart.
-            _actual_start = int(np.argmax(snap.in_tree)) if snap.in_tree is not None else int(start_node)
-            st.info(
-                f"**Ready** — the tree starts containing only node **{_actual_start}**. "
-                "Press **▶ Play** or **Next ▶** to start growing it."
-            )
-    elif snap.phase == "accept":
-        e = snap.current_edge
-        st.success(
-            f"**Accepted ({e.u}, {e.v})**, weight {e.w:.1f} — its endpoints were in "
-            f"different components, so this edge cannot close a cycle. Components merge."
-        )
-    elif snap.phase == "reject":
-        e = snap.current_edge
-        st.warning(
-            f"**Rejected ({e.u}, {e.v})**, weight {e.w:.1f} — its endpoints are already "
-            "connected by the highlighted path. Adding it would close a cycle, and by "
-            "the **cycle property**, this edge is guaranteed to be the heaviest edge on "
-            "that cycle (every other edge on the path was accepted earlier, at a lower "
-            "or equal weight)."
-        )
-    elif snap.phase == "grow":
-        e = snap.current_edge
-        st.success(
-            f"**Added ({e.u}, {e.v})**, weight {e.w:.1f} — the cheapest edge currently "
-            "crossing the cut (dashed) between the tree and everything outside it. By "
-            "the **cut property**, this edge is guaranteed to belong to *some* MST."
-        )
-    else:  # done
-        if snap.n_components == 1:
+                # Read the actual start node back off the snapshot's own in_tree
+                # mask (ground truth) rather than the raw start_node widget value —
+                # the widget's value gets clamped to a valid node index inside
+                # _run_algorithm, so echoing it unclamped here could contradict
+                # the node actually highlighted green in the chart.
+                _actual_start = int(np.argmax(snap.in_tree)) if snap.in_tree is not None else int(start_node)
+                st.info(
+                    f"**Ready** — the tree starts containing only node **{_actual_start}**. "
+                    "Press **▶ Play** or **Next ▶** to start growing it."
+                )
+        elif snap.phase == "accept":
+            e = snap.current_edge
             st.success(
-                f"**Spanning tree complete** — {len(snap.mst_edges)} edges, total weight "
-                f"**{snap.total_weight:.1f}**."
+                f"**Accepted ({e.u}, {e.v})**, weight {e.w:.1f} — its endpoints were in "
+                f"different components, so this edge cannot close a cycle. Components merge."
             )
-        else:
-            st.error(
-                f"**Incomplete** — the graph has {snap.n_components} disconnected "
-                f"fragments, so only a minimum spanning *forest* could be built "
-                f"({len(snap.mst_edges)} edges total)."
+        elif snap.phase == "reject":
+            e = snap.current_edge
+            st.warning(
+                f"**Rejected ({e.u}, {e.v})**, weight {e.w:.1f} — its endpoints are already "
+                "connected by the highlighted path. Adding it would close a cycle, and by "
+                "the **cycle property**, this edge is guaranteed to be the heaviest edge on "
+                "that cycle (every other edge on the path was accepted earlier, at a lower "
+                "or equal weight)."
             )
+        elif snap.phase == "grow":
+            e = snap.current_edge
+            st.success(
+                f"**Added ({e.u}, {e.v})**, weight {e.w:.1f} — the cheapest edge currently "
+                "crossing the cut (dashed) between the tree and everything outside it. By "
+                "the **cut property**, this edge is guaranteed to belong to *some* MST."
+            )
+        else:  # done
+            if snap.n_components == 1:
+                st.success(
+                    f"**Spanning tree complete** — {len(snap.mst_edges)} edges, total weight "
+                    f"**{snap.total_weight:.1f}**."
+                )
+            else:
+                st.error(
+                    f"**Incomplete** — the graph has {snap.n_components} disconnected "
+                    f"fragments, so only a minimum spanning *forest* could be built "
+                    f"({len(snap.mst_edges)} edges total)."
+                )
 
-    with st.expander("📖 Reading the animation"):
-        if snap.algorithm == "kruskal":
-            st.markdown(
-                """
+        with st.expander("📖 Reading the animation"):
+            if snap.algorithm == "kruskal":
+                st.markdown(
+                    """
 - **Grey lines** — every candidate edge (hover for its weight)
 - **Node colour** — current Union-Find component; same colour = same component
 - **Teal (thick)** — edges accepted into the MST so far
@@ -466,10 +471,10 @@ with col_main:
 - The **Union-Find components** panel lists which nodes currently share a set
 - The **Next edges** panel previews what Kruskal's sorted queue looks at next
 """
-            )
-        else:
-            st.markdown(
-                """
+                )
+            else:
+                st.markdown(
+                    """
 - **Grey lines** — every candidate edge (hover for its weight)
 - **Teal nodes** — already in the tree; **grey nodes** — not yet reached
 - **Teal (thick)** — edges already added to the tree
@@ -478,16 +483,16 @@ with col_main:
 - **Indigo (thick)** — the edge just added — always the cheapest edge in the cut
 - The **Frontier** panel lists the best few live candidates from that cut
 """
-            )
+                )
 
-    # -------------------------------------------------------------------
-    # Auto-advance (must be last — triggers rerun after a delay)
-    # -------------------------------------------------------------------
-    if playing:
-        if step_idx < n_steps - 1:
-            time.sleep(DELAY)
-            st.session_state[_k("step_idx")] = step_idx + 1
-            st.rerun()
-        else:
-            st.session_state[_k("playing")] = False
-            st.rerun()
+        # Auto-advance (must be last — triggers a fragment-scoped rerun after a delay)
+        if playing:
+            if step_idx < n_steps - 1:
+                time.sleep(DELAY)
+                st.session_state[_k("step_idx")] = step_idx + 1
+                st.rerun(scope="fragment")
+            else:
+                st.session_state[_k("playing")] = False
+                st.rerun(scope="fragment")
+
+    _playback()

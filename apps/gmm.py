@@ -159,57 +159,67 @@ with col_main:
         ],
     )
 
-    with st.container(border=True):
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Current log-likelihood", f"{snap.log_likelihood:.2f}")
-        c2.metric("Frame", f"{step_idx + 1} / {n_steps}")
-        c3.metric("ΔLL (vs frame 0)", f"{snap.log_likelihood - series[0]:.2f}")
-
     # -------------------------------------------------------------------
-    # Playback controls
+    # Metrics, playback controls, chart, and auto-advance all live inside
+    # one fragment: st.rerun() during autoplay used to fully rerun the
+    # whole page (title/caption/params rail/about-section included)
+    # several times a second, and small timing differences in how long
+    # each of those took to re-render showed up as visible flicker/layout
+    # shift on every frame. Scoping the rerun to just this fragment keeps
+    # everything above it (and the sidebar) completely static.
     # -------------------------------------------------------------------
-    with st.container(border=True):
-        speed = st.select_slider("Playback speed", ["0.5×", "1×", "2×", "4×"], "1×", label_visibility="collapsed", key=_k("speed"))
-        delay = {"0.5×": 1.0, "1×": 0.52, "2×": 0.28, "4×": 0.14}[speed]
-        b1, b2, b3, b4 = st.columns([1, 1, 1, 1])
-        with b1:
-            if st.button("◀", use_container_width=True, disabled=step_idx == 0 or playing, key=_k("prev")):
-                st.session_state[_k("step_idx")] = max(0, step_idx - 1)
-                st.rerun()
-        with b2:
-            if st.button("▶ Play", use_container_width=True, disabled=playing or step_idx == n_steps - 1, type="primary", key=_k("play")):
-                st.session_state[_k("playing")] = True
-                st.rerun()
-        with b3:
-            if st.button("⏸", use_container_width=True, disabled=not playing, key=_k("pause")):
-                st.session_state[_k("playing")] = False
-                st.rerun()
-        with b4:
-            if st.button("Next ▶", use_container_width=True, disabled=step_idx == n_steps - 1 or playing, key=_k("next")):
-                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-                st.rerun()
+    @st.fragment
+    def _playback() -> None:
+        with st.container(border=True):
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Current log-likelihood", f"{snap.log_likelihood:.2f}")
+            c2.metric("Frame", f"{step_idx + 1} / {n_steps}")
+            c3.metric("ΔLL (vs frame 0)", f"{snap.log_likelihood - series[0]:.2f}")
 
-        st.progress(step_idx / max(n_steps - 1, 1), text=f"Frame {step_idx + 1}/{n_steps}")
+        with st.container(border=True):
+            speed = st.select_slider("Playback speed", ["0.5×", "1×", "2×", "4×"], "1×", label_visibility="collapsed", key=_k("speed"))
+            delay = {"0.5×": 1.0, "1×": 0.52, "2×": 0.28, "4×": 0.14}[speed]
+            b1, b2, b3, b4 = st.columns([1, 1, 1, 1])
+            with b1:
+                if st.button("◀", use_container_width=True, disabled=step_idx == 0 or playing, key=_k("prev")):
+                    st.session_state[_k("step_idx")] = max(0, step_idx - 1)
+                    st.rerun(scope="fragment")
+            with b2:
+                if st.button("▶ Play", use_container_width=True, disabled=playing or step_idx == n_steps - 1, type="primary", key=_k("play")):
+                    st.session_state[_k("playing")] = True
+                    st.rerun(scope="fragment")
+            with b3:
+                if st.button("⏸", use_container_width=True, disabled=not playing, key=_k("pause")):
+                    st.session_state[_k("playing")] = False
+                    st.rerun(scope="fragment")
+            with b4:
+                if st.button("Next ▶", use_container_width=True, disabled=step_idx == n_steps - 1 or playing, key=_k("next")):
+                    st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                    st.rerun(scope="fragment")
 
-    if snap.substep == "m":
-        st.info(
-            "**M-step:** each Gaussian’s π, μ, Σ was just updated from the latest soft assignments. "
-            "Point colours **still** reflect the **previous** E-step so you can see ellipses move first."
-        )
-    elif snap.substep == "e" or snap.substep == "init":
-        st.success(
-            "**E-step:** colours now match current π, μ, Σ (soft cluster membership). "
-            + ("Compare ellipse axes to the colour gradients." if snap.substep == "e" else "")
-        )
+            st.progress(step_idx / max(n_steps - 1, 1), text=f"Frame {step_idx + 1}/{n_steps}")
 
-    fig = make_figure(snap)
-    with st.container(border=True):
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": True}, key=_k("chart"))
+        if snap.substep == "m":
+            st.info(
+                "**M-step:** each Gaussian’s π, μ, Σ was just updated from the latest soft assignments. "
+                "Point colours **still** reflect the **previous** E-step so you can see ellipses move first."
+            )
+        elif snap.substep == "e" or snap.substep == "init":
+            st.success(
+                "**E-step:** colours now match current π, μ, Σ (soft cluster membership). "
+                + ("Compare ellipse axes to the colour gradients." if snap.substep == "e" else "")
+            )
 
-    if playing and step_idx < n_steps - 1:
-        time.sleep(delay)
-        st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-        st.rerun()
-    elif playing:
-        st.session_state[_k("playing")] = False
-        st.rerun()
+        fig = make_figure(snap)
+        with st.container(border=True):
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": True}, key=_k("chart"))
+
+        if playing and step_idx < n_steps - 1:
+            time.sleep(delay)
+            st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+            st.rerun(scope="fragment")
+        elif playing:
+            st.session_state[_k("playing")] = False
+            st.rerun(scope="fragment")
+
+    _playback()

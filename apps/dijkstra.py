@@ -317,124 +317,130 @@ with col_main:
         st.rerun()
 
     # -------------------------------------------------------------------
-    # Playback controls (Streamlit-native — Prev/Next + Play/Pause via rerun)
+    # Playback controls, chart, panel, metrics, and auto-advance all live
+    # inside one fragment: st.rerun() during autoplay used to fully rerun
+    # the whole page (title/caption/params rail/about-section included)
+    # several times a second, and small timing differences in how long
+    # each of those took to re-render showed up as visible flicker/layout
+    # shift on every frame. Scoping the rerun to just this fragment keeps
+    # everything above it (and the sidebar) completely static.
     # -------------------------------------------------------------------
     n_steps = len(snapshots)
-    step_idx: int = st.session_state.get(_k("step_idx"), 0)
-    step_idx = max(0, min(step_idx, n_steps - 1))
-    st.session_state[_k("step_idx")] = step_idx
-    playing: bool = st.session_state.get(_k("playing"), False)
 
-    with st.container(border=True):
-        speed = st.select_slider(
-            "Playback speed", options=["0.5×", "1×", "2×", "4×", "8×"], value="2×",
-            label_visibility="collapsed",
-            key=_k("speed"),
-        )
-        DELAY = {"0.5×": 0.9, "1×": 0.45, "2×": 0.22, "4×": 0.11, "8×": 0.05}[speed]
+    @st.fragment
+    def _playback() -> None:
+        step_idx: int = st.session_state.get(_k("step_idx"), 0)
+        step_idx = max(0, min(step_idx, n_steps - 1))
+        st.session_state[_k("step_idx")] = step_idx
+        playing: bool = st.session_state.get(_k("playing"), False)
 
-        col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
-
-        with col_prev:
-            if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
-                st.session_state[_k("step_idx")] = max(0, step_idx - 1)
-                st.rerun()
-
-        with col_play:
-            if st.button("▶  Play", use_container_width=True,
-                         disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
-                st.session_state[_k("playing")] = True
-                st.rerun()
-
-        with col_pause:
-            if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
-                st.session_state[_k("playing")] = False
-                st.rerun()
-
-        with col_next:
-            if st.button("Next ▶", use_container_width=True,
-                         disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
-                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-                st.rerun()
-
-        with col_speed:
-            st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
-
-        snap = snapshots[step_idx]
-        st.progress(step_idx / max(n_steps - 1, 1), text=f"Frame {step_idx + 1} / {n_steps} — {snap.title}")
-
-    # -------------------------------------------------------------------
-    # Chart + priority-queue panel
-    # -------------------------------------------------------------------
-    col_chart, col_queue = st.columns([3, 1])
-
-    with col_chart, st.container(border=True):
-        fig = make_static_figure(snap)
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart"))
-
-    with col_queue, st.container(border=True):
-        st.markdown("**Priority queue** (best entries)")
-        if snap.frontier_preview:
-            for priority, g, (r, c) in snap.frontier_preview:
-                marker = "👉 " if snap.current == (r, c) else ""
-                st.text(f"{marker}({r:>2},{c:>2})  f={priority:5.1f}  g={g:5.1f}")
-        else:
-            st.text("— empty —")
-
-    with st.container(border=True):
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Phase", snap.phase.replace("_", " ").capitalize())
-        m2.metric("Nodes visited", str(snap.step))
-        if snap.phase == "found":
-            m3.metric("Path cost", f"{snap.total_cost:.1f}")
-        elif snap.phase == "no_path":
-            m3.metric("Status", "Unreachable ✗")
-        else:
-            m3.metric("Open set size", str(int(np.count_nonzero(snap.open_mask))))
-
-    compare = st.session_state.get(_k("compare"))
-    if compare and snap.phase == "found":
-        dij, a_star = compare.get("dijkstra"), compare.get("astar")
-        if dij and a_star:
-            diff_pct = 100 * (dij - a_star) / dij
-            comparison = (
-                f"A* explored **{diff_pct:.0f}% fewer** nodes to find the same optimal path."
-                if diff_pct > 0
-                else "both algorithms explored about the same number of nodes here."
+        with st.container(border=True):
+            speed = st.select_slider(
+                "Playback speed", options=["0.5×", "1×", "2×", "4×", "8×"], value="2×",
+                label_visibility="collapsed",
+                key=_k("speed"),
             )
-            st.caption(
-                f"On this exact grid: Dijkstra visits **{dij}** nodes, A* visits "
-                f"**{a_star}** nodes — {comparison}"
+            DELAY = {"0.5×": 0.9, "1×": 0.45, "2×": 0.22, "4×": 0.11, "8×": 0.05}[speed]
+
+            col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
+
+            with col_prev:
+                if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
+                    st.session_state[_k("step_idx")] = max(0, step_idx - 1)
+                    st.rerun(scope="fragment")
+
+            with col_play:
+                if st.button("▶  Play", use_container_width=True,
+                             disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
+                    st.session_state[_k("playing")] = True
+                    st.rerun(scope="fragment")
+
+            with col_pause:
+                if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
+                    st.session_state[_k("playing")] = False
+                    st.rerun(scope="fragment")
+
+            with col_next:
+                if st.button("Next ▶", use_container_width=True,
+                             disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
+                    st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                    st.rerun(scope="fragment")
+
+            with col_speed:
+                st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
+
+            snap = snapshots[step_idx]
+            st.progress(step_idx / max(n_steps - 1, 1), text=f"Frame {step_idx + 1} / {n_steps} — {snap.title}")
+
+        col_chart, col_queue = st.columns([3, 1])
+
+        with col_chart, st.container(border=True):
+            fig = make_static_figure(snap)
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart"))
+
+        with col_queue, st.container(border=True):
+            st.markdown("**Priority queue** (best entries)")
+            if snap.frontier_preview:
+                for priority, g, (r, c) in snap.frontier_preview:
+                    marker = "👉 " if snap.current == (r, c) else ""
+                    st.text(f"{marker}({r:>2},{c:>2})  f={priority:5.1f}  g={g:5.1f}")
+            else:
+                st.text("— empty —")
+
+        with st.container(border=True):
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Phase", snap.phase.replace("_", " ").capitalize())
+            m2.metric("Nodes visited", str(snap.step))
+            if snap.phase == "found":
+                m3.metric("Path cost", f"{snap.total_cost:.1f}")
+            elif snap.phase == "no_path":
+                m3.metric("Status", "Unreachable ✗")
+            else:
+                m3.metric("Open set size", str(int(np.count_nonzero(snap.open_mask))))
+
+        compare = st.session_state.get(_k("compare"))
+        if compare and snap.phase == "found":
+            dij, a_star = compare.get("dijkstra"), compare.get("astar")
+            if dij and a_star:
+                diff_pct = 100 * (dij - a_star) / dij
+                comparison = (
+                    f"A* explored **{diff_pct:.0f}% fewer** nodes to find the same optimal path."
+                    if diff_pct > 0
+                    else "both algorithms explored about the same number of nodes here."
+                )
+                st.caption(
+                    f"On this exact grid: Dijkstra visits **{dij}** nodes, A* visits "
+                    f"**{a_star}** nodes — {comparison}"
+                )
+
+        if snap.phase == "init":
+            st.info(
+                "**Ready** — the priority queue holds only the start node at cost 0. "
+                "Press **▶ Play** or **Next ▶** to begin expanding the frontier."
+            )
+        elif snap.phase == "visit":
+            n_upd = len(snap.updated)
+            st.info(
+                f"**Visiting ({snap.current[0]}, {snap.current[1]})** — this node's "
+                f"shortest distance is now locked in. {n_upd} neighbour"
+                f"{'s' if n_upd != 1 else ''} got a cheaper known cost and "
+                f"{'were' if n_upd != 1 else 'was'} pushed into the queue."
+            )
+        elif snap.phase == "found":
+            st.success(
+                f"**Goal reached** — cheapest path costs **{snap.total_cost:.1f}** "
+                f"over {len(snap.path) - 1} steps, after visiting {snap.step} nodes."
+            )
+        else:
+            st.error(
+                f"**No path exists** — the queue emptied after visiting {snap.step} "
+                "nodes without ever reaching the goal. Walls fully separate start "
+                "from goal."
             )
 
-    if snap.phase == "init":
-        st.info(
-            "**Ready** — the priority queue holds only the start node at cost 0. "
-            "Press **▶ Play** or **Next ▶** to begin expanding the frontier."
-        )
-    elif snap.phase == "visit":
-        n_upd = len(snap.updated)
-        st.info(
-            f"**Visiting ({snap.current[0]}, {snap.current[1]})** — this node's "
-            f"shortest distance is now locked in. {n_upd} neighbour"
-            f"{'s' if n_upd != 1 else ''} got a cheaper known cost and "
-            f"{'were' if n_upd != 1 else 'was'} pushed into the queue."
-        )
-    elif snap.phase == "found":
-        st.success(
-            f"**Goal reached** — cheapest path costs **{snap.total_cost:.1f}** "
-            f"over {len(snap.path) - 1} steps, after visiting {snap.step} nodes."
-        )
-    else:
-        st.error(
-            f"**No path exists** — the queue emptied after visiting {snap.step} "
-            "nodes without ever reaching the goal. Walls fully separate start "
-            "from goal."
-        )
-
-    with st.expander("📖 Reading the animation"):
-        st.markdown(
-            """
+        with st.expander("📖 Reading the animation"):
+            st.markdown(
+                """
 - **Terrain shading** — darker/browner cells cost more to enter (mud, water)
 - **Dark grey / black** — walls, impassable
 - **Light indigo** — closed / finalised nodes (shortest distance locked in)
@@ -446,16 +452,16 @@ with col_main:
 - The **priority queue** panel on the right shows the best few candidates
   waiting to be expanded next — `f` is priority (`g` for Dijkstra, `g+h` for A*)
 """
-        )
+            )
 
-    # -------------------------------------------------------------------
-    # Auto-advance (must be last — triggers rerun after a delay)
-    # -------------------------------------------------------------------
-    if playing:
-        if step_idx < n_steps - 1:
-            time.sleep(DELAY)
-            st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-            st.rerun()
-        else:
-            st.session_state[_k("playing")] = False
-            st.rerun()
+        # Auto-advance (must be last — triggers a fragment-scoped rerun after a delay)
+        if playing:
+            if step_idx < n_steps - 1:
+                time.sleep(DELAY)
+                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                st.rerun(scope="fragment")
+            else:
+                st.session_state[_k("playing")] = False
+                st.rerun(scope="fragment")
+
+    _playback()

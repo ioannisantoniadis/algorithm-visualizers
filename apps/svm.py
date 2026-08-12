@@ -214,115 +214,120 @@ with col_main:
     )
 
     # -------------------------------------------------------------------
-    # Playback controls (pure Streamlit — no Plotly updatemenus)
+    # Playback controls, charts, metrics, and auto-advance all live inside
+    # one fragment: st.rerun() during autoplay used to fully rerun the
+    # whole page (title/caption/params rail/about-section included)
+    # several times a second, and small timing differences in how long
+    # each of those took to re-render showed up as visible flicker/layout
+    # shift on every frame. Scoping the rerun to just this fragment keeps
+    # everything above it (and the sidebar) completely static.
     # -------------------------------------------------------------------
-    step_idx: int = st.session_state.get(_k("step_idx"), 0)
-    step_idx = max(0, min(step_idx, n_steps - 1))
-    st.session_state[_k("step_idx")] = step_idx
-    playing: bool = st.session_state.get(_k("playing"), False)
+    @st.fragment
+    def _playback() -> None:
+        step_idx: int = st.session_state.get(_k("step_idx"), 0)
+        step_idx = max(0, min(step_idx, n_steps - 1))
+        st.session_state[_k("step_idx")] = step_idx
+        playing: bool = st.session_state.get(_k("playing"), False)
 
-    with st.container(border=True):
-        speed = st.select_slider(
-            "Playback speed",
-            options=["0.5×", "1×", "2×", "4×"],
-            value="1×",
-            label_visibility="collapsed",
-            key=_k("speed"),
-        )
-        DELAY = {"0.5×": 1.2, "1×": 0.6, "2×": 0.3, "4×": 0.15}[speed]
+        with st.container(border=True):
+            speed = st.select_slider(
+                "Playback speed",
+                options=["0.5×", "1×", "2×", "4×"],
+                value="1×",
+                label_visibility="collapsed",
+                key=_k("speed"),
+            )
+            DELAY = {"0.5×": 1.2, "1×": 0.6, "2×": 0.3, "4×": 0.15}[speed]
 
-        col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
+            col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
 
-        with col_prev:
-            if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
-                st.session_state[_k("step_idx")] = max(0, step_idx - 1)
-                st.rerun()
+            with col_prev:
+                if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
+                    st.session_state[_k("step_idx")] = max(0, step_idx - 1)
+                    st.rerun(scope="fragment")
 
-        with col_play:
-            if st.button("▶  Play", use_container_width=True,
-                         disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
-                st.session_state[_k("playing")] = True
-                st.rerun()
+            with col_play:
+                if st.button("▶  Play", use_container_width=True,
+                             disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
+                    st.session_state[_k("playing")] = True
+                    st.rerun(scope="fragment")
 
-        with col_pause:
-            if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
-                st.session_state[_k("playing")] = False
-                st.rerun()
+            with col_pause:
+                if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
+                    st.session_state[_k("playing")] = False
+                    st.rerun(scope="fragment")
 
-        with col_next:
-            if st.button("Next ▶", use_container_width=True,
-                         disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
-                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-                st.rerun()
+            with col_next:
+                if st.button("Next ▶", use_container_width=True,
+                             disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
+                    st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                    st.rerun(scope="fragment")
 
-        with col_speed:
-            st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
+            with col_speed:
+                st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
 
-        st.progress(step_idx / max(n_steps - 1, 1),
-                    text=f"Frame {step_idx + 1} / {n_steps} — {snapshots[step_idx].title}")
+            st.progress(step_idx / max(n_steps - 1, 1),
+                        text=f"Frame {step_idx + 1} / {n_steps} — {snapshots[step_idx].title}")
 
-    # -------------------------------------------------------------------
-    # Chart + metrics — always a static figure; auto-play advances step_idx
-    # -------------------------------------------------------------------
-    snap = snapshots[step_idx]
+        snap = snapshots[step_idx]
 
-    with st.container(border=True):
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Sweep", str(snap.iteration))
-        m2.metric("Support vectors", str(snap.n_support))
-        m3.metric("Dual objective", f"{snap.dual_objective:.2f}")
-        if snap.converged:
-            m4.metric("Status", "Converged ✓")
-        elif snap.iteration > 0:
-            m4.metric("α pairs updated", str(snap.n_changed))
+        with st.container(border=True):
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Sweep", str(snap.iteration))
+            m2.metric("Support vectors", str(snap.n_support))
+            m3.metric("Dual objective", f"{snap.dual_objective:.2f}")
+            if snap.converged:
+                m4.metric("Status", "Converged ✓")
+            elif snap.iteration > 0:
+                m4.metric("α pairs updated", str(snap.n_changed))
+            else:
+                m4.metric("Status", "Not started")
+
+        with st.container(border=True):
+            chart_main, chart_loss = st.columns([3, 1.3])
+            with chart_main:
+                fig = make_static_figure(snap, kernel_key, resolved_gamma, degree, coef0)
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart_main"))
+            with chart_loss:
+                st.caption("SMO dual objective (Σα − ½αᵀQα)")
+                loss_fig = make_loss_figure(snapshots, step_idx)
+                st.plotly_chart(loss_fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart_loss"))
+                st.caption(
+                    "Rises monotonically by construction. By strong duality its maximum "
+                    "equals the minimised primal hinge loss, so this climb mirrors the "
+                    "hinge loss falling during gradient-based training."
+                )
+
+        if snap.iteration == 0:
+            st.info(
+                "**Initialisation** — every α is 0, so the decision function is flat "
+                "(no support vectors yet). Press **▶ Play** or **Next ▶** to start training."
+            )
+        elif snap.n_changed > 0:
+            pair = snap.active_pair
+            pair_txt = f" (last pair updated: points {pair[0]} & {pair[1]})" if pair else ""
+            st.info(
+                f"**Sweep {snap.iteration}** — scanned every point for KKT violations and "
+                f"updated **{snap.n_changed}** α pair(s){pair_txt}. Support vectors and the "
+                f"margin band shift as α changes."
+            )
         else:
-            m4.metric("Status", "Not started")
+            status = "**Converged** — three sweeps in a row changed nothing." if snap.converged \
+                else "No violations found this sweep, but convergence isn't confirmed yet."
+            st.info(f"**Sweep {snap.iteration}** — no α pairs needed updating. {status}")
 
-    with st.container(border=True):
-        chart_main, chart_loss = st.columns([3, 1.3])
-        with chart_main:
-            fig = make_static_figure(snap, kernel_key, resolved_gamma, degree, coef0)
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart_main"))
-        with chart_loss:
-            st.caption("SMO dual objective (Σα − ½αᵀQα)")
-            loss_fig = make_loss_figure(snapshots, step_idx)
-            st.plotly_chart(loss_fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart_loss"))
-            st.caption(
-                "Rises monotonically by construction. By strong duality its maximum "
-                "equals the minimised primal hinge loss, so this climb mirrors the "
-                "hinge loss falling during gradient-based training."
+        if step_idx == n_steps - 1 and not snap.converged:
+            st.warning(
+                f"**Reached the {max_epochs}-sweep cap without converging** — this is a "
+                "mid-training snapshot, not the model's settled answer. Raise **Max "
+                "iterations** in the sidebar (or lower **C**) to let SMO finish; this "
+                "simplified solver picks its second index at random rather than by the "
+                "maximum-violation heuristic real solvers use, so it can need many more "
+                "sweeps on large-C or heavily overlapping data."
             )
 
-    if snap.iteration == 0:
-        st.info(
-            "**Initialisation** — every α is 0, so the decision function is flat "
-            "(no support vectors yet). Press **▶ Play** or **Next ▶** to start training."
-        )
-    elif snap.n_changed > 0:
-        pair = snap.active_pair
-        pair_txt = f" (last pair updated: points {pair[0]} & {pair[1]})" if pair else ""
-        st.info(
-            f"**Sweep {snap.iteration}** — scanned every point for KKT violations and "
-            f"updated **{snap.n_changed}** α pair(s){pair_txt}. Support vectors and the "
-            f"margin band shift as α changes."
-        )
-    else:
-        status = "**Converged** — three sweeps in a row changed nothing." if snap.converged \
-            else "No violations found this sweep, but convergence isn't confirmed yet."
-        st.info(f"**Sweep {snap.iteration}** — no α pairs needed updating. {status}")
-
-    if step_idx == n_steps - 1 and not snap.converged:
-        st.warning(
-            f"**Reached the {max_epochs}-sweep cap without converging** — this is a "
-            "mid-training snapshot, not the model's settled answer. Raise **Max "
-            "iterations** in the sidebar (or lower **C**) to let SMO finish; this "
-            "simplified solver picks its second index at random rather than by the "
-            "maximum-violation heuristic real solvers use, so it can need many more "
-            "sweeps on large-C or heavily overlapping data."
-        )
-
-    with st.expander("📖 Reading the animation"):
-        st.markdown("""
+        with st.expander("📖 Reading the animation"):
+            st.markdown("""
 - **Shaded regions** = predicted class (indigo = +1, rose = −1); intensity fades near the boundary
 - **Solid black line** = decision boundary (f(x) = 0)
 - **Dashed lines** = the margin (f(x) = ±1) — the "street" the SVM tries to keep empty
@@ -331,14 +336,14 @@ with col_main:
 - **◀ Prev / Next ▶** to step manually, **▶ Play** to auto-advance through SMO sweeps
 """)
 
-    # -------------------------------------------------------------------
-    # Auto-advance (must be last — triggers rerun after a delay)
-    # -------------------------------------------------------------------
-    if playing:
-        if step_idx < n_steps - 1:
-            time.sleep(DELAY)
-            st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-            st.rerun()
-        else:
-            st.session_state[_k("playing")] = False
-            st.rerun()
+        # Auto-advance (must be last — triggers a fragment-scoped rerun after a delay)
+        if playing:
+            if step_idx < n_steps - 1:
+                time.sleep(DELAY)
+                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                st.rerun(scope="fragment")
+            else:
+                st.session_state[_k("playing")] = False
+                st.rerun(scope="fragment")
+
+    _playback()

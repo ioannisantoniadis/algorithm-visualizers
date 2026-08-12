@@ -217,156 +217,152 @@ with col_main:
     st.markdown("---")
 
     # -------------------------------------------------------------------
-    # Playback controls (pure Streamlit — no Plotly updatemenus)
+    # Playback controls, metrics, charts, and auto-advance all live inside
+    # one fragment: st.rerun() during autoplay used to fully rerun the
+    # whole page (title/caption/params rail/about-section included)
+    # several times a second, and small timing differences in how long
+    # each of those took to re-render showed up as visible flicker/layout
+    # shift on every frame. Scoping the rerun to just this fragment keeps
+    # everything above it (and the sidebar) completely static.
     # -------------------------------------------------------------------
-    step_idx: int = st.session_state.get(_k("step_idx"), 0)
-    step_idx = max(0, min(step_idx, n_steps - 1))
-    st.session_state[_k("step_idx")] = step_idx
-    playing: bool = st.session_state.get(_k("playing"), False)
+    @st.fragment
+    def _playback() -> None:
+        step_idx: int = st.session_state.get(_k("step_idx"), 0)
+        step_idx = max(0, min(step_idx, n_steps - 1))
+        st.session_state[_k("step_idx")] = step_idx
+        playing: bool = st.session_state.get(_k("playing"), False)
 
-    with st.container(border=True):
-        speed = st.select_slider(
-            "Playback speed", options=["0.5×", "1×", "2×", "4×"], value="1×",
-            label_visibility="collapsed",
-            key=_k("speed"),
-        )
-        DELAY = {"0.5×": 0.9, "1×": 0.45, "2×": 0.22, "4×": 0.1}[speed]
-
-        col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
-
-        with col_prev:
-            if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
-                st.session_state[_k("step_idx")] = max(0, step_idx - 1)
-                st.rerun()
-
-        with col_play:
-            if st.button("▶  Play", use_container_width=True,
-                         disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
-                st.session_state[_k("playing")] = True
-                st.rerun()
-
-        with col_pause:
-            if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
-                st.session_state[_k("playing")] = False
-                st.rerun()
-
-        with col_next:
-            if st.button("Next ▶", use_container_width=True,
-                         disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
-                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-                st.rerun()
-
-        with col_speed:
-            st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
-
-        st.progress(
-            step_idx / max(n_steps - 1, 1),
-            text=f"Frame {step_idx + 1} / {n_steps} — {snapshots[step_idx].title}",
-        )
-
-    st.markdown("---")
-
-    # -------------------------------------------------------------------
-    # Metric cards
-    # -------------------------------------------------------------------
-    snap = snapshots[step_idx]
-
-    with st.container(border=True):
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Phase", snap.phase.capitalize())
-        m2.metric("Step", str(snap.step))
-        m3.metric("NT-Xent loss", f"{snap.loss:.3f}" if snap.step > 0 else "—")
-        m4.metric(
-            "Pos / neg cos-sim",
-            f"{snap.pos_sim:.2f} / {snap.neg_sim:.2f}" if snap.step > 0 else "—",
-        )
-
-    # -------------------------------------------------------------------
-    # Charts — input space (augmentation) + embedding space (unit circle)
-    # -------------------------------------------------------------------
-    col_input, col_embed = st.columns(2)
-    with col_input:
         with st.container(border=True):
-            st.plotly_chart(
-                make_input_figure(snap, n_clusters),
-                use_container_width=True, config={"displayModeBar": False},
-                key=_k("chart_input_space"),
+            speed = st.select_slider(
+                "Playback speed", options=["0.5×", "1×", "2×", "4×"], value="1×",
+                label_visibility="collapsed",
+                key=_k("speed"),
             )
-    with col_embed:
+            DELAY = {"0.5×": 0.9, "1×": 0.45, "2×": 0.22, "4×": 0.1}[speed]
+
+            col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
+
+            with col_prev:
+                if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
+                    st.session_state[_k("step_idx")] = max(0, step_idx - 1)
+                    st.rerun(scope="fragment")
+
+            with col_play:
+                if st.button("▶  Play", use_container_width=True,
+                             disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
+                    st.session_state[_k("playing")] = True
+                    st.rerun(scope="fragment")
+
+            with col_pause:
+                if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
+                    st.session_state[_k("playing")] = False
+                    st.rerun(scope="fragment")
+
+            with col_next:
+                if st.button("Next ▶", use_container_width=True,
+                             disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
+                    st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                    st.rerun(scope="fragment")
+
+            with col_speed:
+                st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
+
+            st.progress(
+                step_idx / max(n_steps - 1, 1),
+                text=f"Frame {step_idx + 1} / {n_steps} — {snapshots[step_idx].title}",
+            )
+
+        st.markdown("---")
+
+        snap = snapshots[step_idx]
+
         with st.container(border=True):
-            st.plotly_chart(
-                make_embedding_figure(snap, n_clusters),
-                use_container_width=True, config={"displayModeBar": False},
-                key=_k("chart_embedding_space"),
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Phase", snap.phase.capitalize())
+            m2.metric("Step", str(snap.step))
+            m3.metric("NT-Xent loss", f"{snap.loss:.3f}" if snap.step > 0 else "—")
+            m4.metric(
+                "Pos / neg cos-sim",
+                f"{snap.pos_sim:.2f} / {snap.neg_sim:.2f}" if snap.step > 0 else "—",
             )
 
-    if snap.phase == "init":
-        st.info(
-            "**Initialisation** — random weights. The embedding has no relation "
-            "yet to any semantic structure — any clustering you see here is a "
-            "geometric accident of the raw layout, not something the encoder has "
-            "learned."
-        )
-    elif snap.phase == "forward":
-        st.info(
-            f"**Forward pass** — a fresh batch is augmented into two views each, "
-            f"embedded, and normalised. NT-Xent loss = **{snap.loss:.3f}**. "
-            f"Mean positive-pair similarity **{snap.pos_sim:.2f}**, mean "
-            f"negative-pair similarity **{snap.neg_sim:.2f}** — training pushes "
-            f"the first up and the second down."
-        )
-    else:
-        status = (
-            "Loss has stopped improving — training has **converged**."
-            if snap.converged
-            else "Every weight now has a gradient; the update happens right after this frame."
-        )
-        st.info(
-            f"**Backward pass** — the NT-Xent gradient is propagated back "
-            f"through L2-normalisation and every dense layer via the chain "
-            f"rule (see `contrastive/algorithm.py` for the full derivation). {status}"
-        )
-
-    st.markdown("---")
-
-    # -------------------------------------------------------------------
-    # Loss curve
-    # -------------------------------------------------------------------
-    history = [(s.step, s.loss, s.pos_sim, s.neg_sim) for s in snapshots if s.phase == "forward"]
-    with st.container(border=True):
-        st.plotly_chart(
-            make_loss_figure(history, snap.step),
-            use_container_width=True, config={"displayModeBar": False},
-            key=_k("chart_loss_curve"),
-        )
-
-    # -------------------------------------------------------------------
-    # Similarity heat-map
-    # -------------------------------------------------------------------
-    with st.expander("🔬 Batch similarity matrix"):
-        if snap.sim_matrix is None:
-            st.caption(
-                "This frame is the random **initialisation** — no batch has been "
-                "sampled yet, so there's no similarity matrix to show. Step "
-                "forward to the first training step to see it."
-            )
-        else:
-            st.caption(
-                "Every view in the current batch against every other. The open "
-                "black squares mark each anchor's single positive pair; everything "
-                "else is a negative. Training should brighten the marked cells "
-                "(cos sim → 1) and dim the rest (cos sim → −1 or 0)."
-            )
+        col_input, col_embed = st.columns(2)
+        with col_input:
             with st.container(border=True):
                 st.plotly_chart(
-                    make_similarity_heatmap(snap),
+                    make_input_figure(snap, n_clusters),
                     use_container_width=True, config={"displayModeBar": False},
-                    key=_k("chart_similarity_heatmap"),
+                    key=_k("chart_input_space"),
+                )
+        with col_embed:
+            with st.container(border=True):
+                st.plotly_chart(
+                    make_embedding_figure(snap, n_clusters),
+                    use_container_width=True, config={"displayModeBar": False},
+                    key=_k("chart_embedding_space"),
                 )
 
-    with st.expander("📖 Reading the animation"):
-        st.markdown(
-            """
+        if snap.phase == "init":
+            st.info(
+                "**Initialisation** — random weights. The embedding has no relation "
+                "yet to any semantic structure — any clustering you see here is a "
+                "geometric accident of the raw layout, not something the encoder has "
+                "learned."
+            )
+        elif snap.phase == "forward":
+            st.info(
+                f"**Forward pass** — a fresh batch is augmented into two views each, "
+                f"embedded, and normalised. NT-Xent loss = **{snap.loss:.3f}**. "
+                f"Mean positive-pair similarity **{snap.pos_sim:.2f}**, mean "
+                f"negative-pair similarity **{snap.neg_sim:.2f}** — training pushes "
+                f"the first up and the second down."
+            )
+        else:
+            status = (
+                "Loss has stopped improving — training has **converged**."
+                if snap.converged
+                else "Every weight now has a gradient; the update happens right after this frame."
+            )
+            st.info(
+                f"**Backward pass** — the NT-Xent gradient is propagated back "
+                f"through L2-normalisation and every dense layer via the chain "
+                f"rule (see `contrastive/algorithm.py` for the full derivation). {status}"
+            )
+
+        st.markdown("---")
+
+        history = [(s.step, s.loss, s.pos_sim, s.neg_sim) for s in snapshots if s.phase == "forward"]
+        with st.container(border=True):
+            st.plotly_chart(
+                make_loss_figure(history, snap.step),
+                use_container_width=True, config={"displayModeBar": False},
+                key=_k("chart_loss_curve"),
+            )
+
+        with st.expander("🔬 Batch similarity matrix"):
+            if snap.sim_matrix is None:
+                st.caption(
+                    "This frame is the random **initialisation** — no batch has been "
+                    "sampled yet, so there's no similarity matrix to show. Step "
+                    "forward to the first training step to see it."
+                )
+            else:
+                st.caption(
+                    "Every view in the current batch against every other. The open "
+                    "black squares mark each anchor's single positive pair; everything "
+                    "else is a negative. Training should brighten the marked cells "
+                    "(cos sim → 1) and dim the rest (cos sim → −1 or 0)."
+                )
+                with st.container(border=True):
+                    st.plotly_chart(
+                        make_similarity_heatmap(snap),
+                        use_container_width=True, config={"displayModeBar": False},
+                        key=_k("chart_similarity_heatmap"),
+                    )
+
+        with st.expander("📖 Reading the animation"):
+            st.markdown(
+                """
 - **Left chart** — input space: circles are "view A", diamonds are "view B" of
   the same batch of points; dotted lines connect each positive pair
 - **Right chart** — embedding space: every dataset point's current position on
@@ -376,16 +372,16 @@ with col_main:
 - **◀ Prev / Next ▶** to step manually, **▶ Play** to auto-advance through
   the whole training run
 """
-        )
+            )
 
-    # -------------------------------------------------------------------
-    # Auto-advance (must be last — triggers rerun after a delay)
-    # -------------------------------------------------------------------
-    if playing:
-        if step_idx < n_steps - 1:
-            time.sleep(DELAY)
-            st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-            st.rerun()
-        else:
-            st.session_state[_k("playing")] = False
-            st.rerun()
+        # Auto-advance (must be last — triggers a fragment-scoped rerun after a delay)
+        if playing:
+            if step_idx < n_steps - 1:
+                time.sleep(DELAY)
+                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                st.rerun(scope="fragment")
+            else:
+                st.session_state[_k("playing")] = False
+                st.rerun(scope="fragment")
+
+    _playback()

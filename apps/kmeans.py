@@ -280,110 +280,115 @@ with col_main:
     n_steps = len(snapshots)
 
     # -----------------------------------------------------------------------
-    # Playback controls  (pure Streamlit — no Plotly updatemenus)
+    # Playback controls, chart, and auto-advance all live inside one
+    # fragment: st.rerun() during autoplay used to fully rerun the whole
+    # page (title/caption/params rail/about-section included) several
+    # times a second, and small timing differences in how long each of
+    # those took to re-render showed up as visible flicker/layout shift
+    # on every frame. Scoping the rerun to just this fragment keeps
+    # everything above it (and the sidebar) completely static.
     # -----------------------------------------------------------------------
-    step_idx: int = st.session_state.get(_k("step_idx"), 0)
-    step_idx = max(0, min(step_idx, n_steps - 1))
-    st.session_state[_k("step_idx")] = step_idx
-    playing:  bool = st.session_state.get(_k("playing"), False)
+    @st.fragment
+    def _playback() -> None:
+        step_idx: int = st.session_state.get(_k("step_idx"), 0)
+        step_idx = max(0, min(step_idx, n_steps - 1))
+        st.session_state[_k("step_idx")] = step_idx
+        playing:  bool = st.session_state.get(_k("playing"), False)
 
-    with st.container(border=True):
-        speed = st.select_slider(
-            "Playback speed",
-            options=["0.5×", "1×", "2×", "4×"],
-            value="1×",
-            label_visibility="collapsed",
-            key=_k("speed"),
-        )
-        DELAY = {"0.5×": 1.4, "1×": 0.7, "2×": 0.35, "4×": 0.18}[speed]
+        with st.container(border=True):
+            speed = st.select_slider(
+                "Playback speed",
+                options=["0.5×", "1×", "2×", "4×"],
+                value="1×",
+                label_visibility="collapsed",
+                key=_k("speed"),
+            )
+            DELAY = {"0.5×": 1.4, "1×": 0.7, "2×": 0.35, "4×": 0.18}[speed]
 
-        col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
+            col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
 
-        with col_prev:
-            if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
-                st.session_state[_k("step_idx")] = max(0, step_idx - 1)
-                st.rerun()
+            with col_prev:
+                if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
+                    st.session_state[_k("step_idx")] = max(0, step_idx - 1)
+                    st.rerun(scope="fragment")
 
-        with col_play:
-            if st.button("▶  Play", use_container_width=True,
-                         disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
-                st.session_state[_k("playing")] = True
-                st.rerun()
+            with col_play:
+                if st.button("▶  Play", use_container_width=True,
+                             disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
+                    st.session_state[_k("playing")] = True
+                    st.rerun(scope="fragment")
 
-        with col_pause:
-            if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
-                st.session_state[_k("playing")] = False
-                st.rerun()
+            with col_pause:
+                if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
+                    st.session_state[_k("playing")] = False
+                    st.rerun(scope="fragment")
 
-        with col_next:
-            if st.button("Next ▶", use_container_width=True,
-                         disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
-                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-                st.rerun()
+            with col_next:
+                if st.button("Next ▶", use_container_width=True,
+                             disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
+                    st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                    st.rerun(scope="fragment")
 
-        with col_speed:
-            st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
+            with col_speed:
+                st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
 
-        st.progress(step_idx / max(n_steps - 1, 1),
-                    text=f"Frame {step_idx + 1} / {n_steps} — {snapshots[step_idx].title}")
+            st.progress(step_idx / max(n_steps - 1, 1),
+                        text=f"Frame {step_idx + 1} / {n_steps} — {snapshots[step_idx].title}")
 
-    # -----------------------------------------------------------------------
-    # Chart — always a static figure; auto-play advances step_idx via rerun
-    # -----------------------------------------------------------------------
-    snap = snapshots[step_idx]
+        snap = snapshots[step_idx]
 
-    with st.container(border=True):
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Phase", snap.phase.capitalize())
-        m2.metric("Iteration", str(snap.iteration))
-        if snap.phase == "assign" and step_idx > 0:
-            m3.metric("Points changed cluster", str(snap.n_changed))
-        elif snap.converged:
-            m3.metric("Status", "Converged ✓")
+        with st.container(border=True):
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Phase", snap.phase.capitalize())
+            m2.metric("Iteration", str(snap.iteration))
+            if snap.phase == "assign" and step_idx > 0:
+                m3.metric("Points changed cluster", str(snap.n_changed))
+            elif snap.converged:
+                m3.metric("Status", "Converged ✓")
+            else:
+                m3.metric("Points changed cluster", "—")
+
+        with st.container(border=True):
+            fig = make_static_figure(snap)
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart"))
+
+        if snap.phase == "init":
+            kind = "manually chosen" if snap.manual_init else "randomly chosen"
+            st.info(
+                f"**Initialisation** — {n_clusters} {kind} data points become the "
+                f"starting centroids (★). Points have no cluster assignment yet (grey)."
+            )
+        elif snap.phase == "assign":
+            pct = f"{100 * snap.n_changed / n_points:.1f}%"
+            st.info(
+                f"**E-step (assign)** — Each point is assigned to its nearest centroid "
+                f"using squared Euclidean distance. **{snap.n_changed} points** ({pct}) "
+                f"changed cluster."
+            )
         else:
-            m3.metric("Points changed cluster", "—")
+            status = (
+                "Centroids have stopped moving — the algorithm has **converged**."
+                if snap.converged
+                else "Centroids will keep moving next iteration."
+            )
+            st.info(f"**M-step (update)** — Each centroid moves to the mean of its cluster. {status}")
 
-    with st.container(border=True):
-        fig = make_static_figure(snap)
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart"))
-
-    if snap.phase == "init":
-        kind = "manually chosen" if snap.manual_init else "randomly chosen"
-        st.info(
-            f"**Initialisation** — {n_clusters} {kind} data points become the "
-            f"starting centroids (★). Points have no cluster assignment yet (grey)."
-        )
-    elif snap.phase == "assign":
-        pct = f"{100 * snap.n_changed / n_points:.1f}%"
-        st.info(
-            f"**E-step (assign)** — Each point is assigned to its nearest centroid "
-            f"using squared Euclidean distance. **{snap.n_changed} points** ({pct}) "
-            f"changed cluster."
-        )
-    else:
-        status = (
-            "Centroids have stopped moving — the algorithm has **converged**."
-            if snap.converged
-            else "Centroids will keep moving next iteration."
-        )
-        st.info(f"**M-step (update)** — Each centroid moves to the mean of its cluster. {status}")
-
-    with st.expander("📖 Reading the animation"):
-        st.markdown("""
+        with st.expander("📖 Reading the animation"):
+            st.markdown("""
 - **Colour change** in points = E-step (assign): points snapping to nearest centroid
 - **Stars ★** moving = M-step (update): centroids sliding to their cluster mean
 - **◀ Prev / Next ▶** to step manually, **▶ Play** to auto-advance
 - Adjust speed with the speed selector above the controls
 """)
 
-    # -----------------------------------------------------------------------
-    # Auto-advance (must be last — triggers rerun after a delay)
-    # -----------------------------------------------------------------------
-    if playing:
-        if step_idx < n_steps - 1:
-            time.sleep(DELAY)
-            st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-            st.rerun()
-        else:
-            st.session_state[_k("playing")] = False
-            st.rerun()
+        # Auto-advance (must be last — triggers a fragment-scoped rerun after a delay)
+        if playing:
+            if step_idx < n_steps - 1:
+                time.sleep(DELAY)
+                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                st.rerun(scope="fragment")
+            else:
+                st.session_state[_k("playing")] = False
+                st.rerun(scope="fragment")
+
+    _playback()

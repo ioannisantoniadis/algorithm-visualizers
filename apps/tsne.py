@@ -142,49 +142,63 @@ with col_main:
         ],
     )
 
-    with st.container(border=True):
-        m1, m2, m3 = st.columns(3)
-        m1.metric("KL (this frame)", f"{snap.kl_divergence:.4f}")
-        m2.metric("Phase", snap.phase)
-        m3.metric("Iteration", str(snap.iteration))
+    # -------------------------------------------------------------------
+    # Metrics, playback controls, chart, and auto-advance all live inside
+    # one fragment: st.rerun() during autoplay used to fully rerun the
+    # whole page (title/caption/params rail/about-section included)
+    # several times a second, and small timing differences in how long
+    # each of those took to re-render showed up as visible flicker/layout
+    # shift on every frame. Scoping the rerun to just this fragment keeps
+    # everything above it (and the sidebar) completely static.
+    # -------------------------------------------------------------------
+    @st.fragment
+    def _playback() -> None:
+        with st.container(border=True):
+            m1, m2, m3 = st.columns(3)
+            m1.metric("KL (this frame)", f"{snap.kl_divergence:.4f}")
+            m2.metric("Phase", snap.phase)
+            m3.metric("Iteration", str(snap.iteration))
 
-    with st.container(border=True):
-        speed = st.select_slider("Speed", ["0.5×", "1×", "2×"], "1×", label_visibility="collapsed", key=_k("speed"))
-        delay = {"0.5×": 0.85, "1×": 0.44, "2×": 0.22}[speed]
-        b1, b2, b3, b4 = st.columns(4)
-        with b1:
-            if st.button("◀", disabled=step_idx == 0 or playing, key=_k("prev")):
-                st.session_state[_k("step_idx")] = max(0, step_idx - 1)
-                st.rerun()
-        with b2:
-            if st.button("▶ Play", disabled=playing or step_idx == n_steps - 1, type="primary", key=_k("play")):
-                st.session_state[_k("playing")] = True
-                st.rerun()
-        with b3:
-            if st.button("⏸", disabled=not playing, key=_k("pause")):
-                st.session_state[_k("playing")] = False
-                st.rerun()
-        with b4:
-            if st.button("Next ▶", disabled=step_idx == n_steps - 1 or playing, key=_k("next")):
-                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-                st.rerun()
+        with st.container(border=True):
+            speed = st.select_slider("Speed", ["0.5×", "1×", "2×"], "1×", label_visibility="collapsed", key=_k("speed"))
+            delay = {"0.5×": 0.85, "1×": 0.44, "2×": 0.22}[speed]
+            b1, b2, b3, b4 = st.columns(4)
+            with b1:
+                if st.button("◀", disabled=step_idx == 0 or playing, key=_k("prev")):
+                    st.session_state[_k("step_idx")] = max(0, step_idx - 1)
+                    st.rerun(scope="fragment")
+            with b2:
+                if st.button("▶ Play", disabled=playing or step_idx == n_steps - 1, type="primary", key=_k("play")):
+                    st.session_state[_k("playing")] = True
+                    st.rerun(scope="fragment")
+            with b3:
+                if st.button("⏸", disabled=not playing, key=_k("pause")):
+                    st.session_state[_k("playing")] = False
+                    st.rerun(scope="fragment")
+            with b4:
+                if st.button("Next ▶", disabled=step_idx == n_steps - 1 or playing, key=_k("next")):
+                    st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                    st.rerun(scope="fragment")
 
-        den = max(n_steps - 1, 1)
-        st.progress(float(step_idx) / float(den), text=f"Frame {step_idx + 1}/{n_steps}")
+            den = max(n_steps - 1, 1)
+            st.progress(float(step_idx) / float(den), text=f"Frame {step_idx + 1}/{n_steps}")
 
-    st.info(
-        "**A (left):** latent geometry before the lift (or **PCA₂** if none). **B (right):** current **𝑌**. "
-        "Colour is **only** for matching points — t-SNE is unsupervised."
-    )
+        st.info(
+            "**A (left):** latent geometry before the lift (or **PCA₂** if none). **B (right):** current **𝑌**. "
+            "Colour is **only** for matching points — t-SNE is unsupervised."
+        )
 
-    fig = make_figure(snap, frame_index=step_idx, frame_total=n_steps)
-    with st.container(border=True):
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart"))
+        fig = make_figure(snap, frame_index=step_idx, frame_total=n_steps)
+        with st.container(border=True):
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart"))
 
-    if playing and step_idx < n_steps - 1:
-        time.sleep(delay)
-        st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-        st.rerun()
-    elif playing:
-        st.session_state[_k("playing")] = False
-        st.rerun()
+        # Auto-advance (must be last — triggers a fragment-scoped rerun after a delay)
+        if playing and step_idx < n_steps - 1:
+            time.sleep(delay)
+            st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+            st.rerun(scope="fragment")
+        elif playing:
+            st.session_state[_k("playing")] = False
+            st.rerun(scope="fragment")
+
+    _playback()

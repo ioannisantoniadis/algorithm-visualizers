@@ -181,90 +181,111 @@ with col_main:
     st.markdown("---")
 
     # -------------------------------------------------------------------
-    # Section 2 — step-through / auto-play walkthrough of the forward pass
+    # Section 2 — step-through / auto-play walkthrough of the forward pass.
+    # Lives inside a fragment: st.rerun() during autoplay used to fully
+    # rerun the whole page (title/caption/params rail/about-section
+    # included) several times a second, and small timing differences in
+    # how long each of those took to re-render showed up as visible
+    # flicker/layout shift on every frame. Scoping the rerun to just this
+    # fragment keeps everything above it (and the sidebar) completely
+    # static.
     # -------------------------------------------------------------------
     st.subheader("2. Forward pass, step by step")
 
-    # Defensive clamp: n_steps can shrink out from under a stale step_idx if a
-    # parameter change and a queued auto-play rerun ever race each other.
-    step_idx: int = st.session_state.get(_k("step_idx"), 0)
-    step_idx = max(0, min(step_idx, n_steps - 1))
-    st.session_state[_k("step_idx")] = step_idx
-    playing: bool = st.session_state.get(_k("playing"), False)
+    @st.fragment
+    def _playback() -> None:
+        # Defensive clamp: n_steps can shrink out from under a stale step_idx if a
+        # parameter change and a queued auto-play rerun ever race each other.
+        step_idx: int = st.session_state.get(_k("step_idx"), 0)
+        step_idx = max(0, min(step_idx, n_steps - 1))
+        st.session_state[_k("step_idx")] = step_idx
+        playing: bool = st.session_state.get(_k("playing"), False)
 
-    with st.container(border=True):
-        speed = st.select_slider(
-            "Playback speed", options=["0.5×", "1×", "2×", "4×"], value="1×",
-            label_visibility="collapsed", key=_k("speed"),
-        )
-        DELAY = {"0.5×": 1.4, "1×": 0.7, "2×": 0.35, "4×": 0.18}[speed]
+        with st.container(border=True):
+            speed = st.select_slider(
+                "Playback speed", options=["0.5×", "1×", "2×", "4×"], value="1×",
+                label_visibility="collapsed", key=_k("speed"),
+            )
+            DELAY = {"0.5×": 1.4, "1×": 0.7, "2×": 0.35, "4×": 0.18}[speed]
 
-        col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
+            col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
 
-        with col_prev:
-            if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
-                st.session_state[_k("step_idx")] = max(0, step_idx - 1)
-                st.rerun()
+            with col_prev:
+                if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
+                    st.session_state[_k("step_idx")] = max(0, step_idx - 1)
+                    st.rerun(scope="fragment")
 
-        with col_play:
-            if st.button("▶  Play", use_container_width=True,
-                         disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
-                st.session_state[_k("playing")] = True
-                st.rerun()
+            with col_play:
+                if st.button("▶  Play", use_container_width=True,
+                             disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
+                    st.session_state[_k("playing")] = True
+                    st.rerun(scope="fragment")
 
-        with col_pause:
-            if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
-                st.session_state[_k("playing")] = False
-                st.rerun()
+            with col_pause:
+                if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
+                    st.session_state[_k("playing")] = False
+                    st.rerun(scope="fragment")
 
-        with col_next:
-            if st.button("Next ▶", use_container_width=True,
-                         disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
-                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-                st.rerun()
+            with col_next:
+                if st.button("Next ▶", use_container_width=True,
+                             disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
+                    st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                    st.rerun(scope="fragment")
 
-        with col_speed:
-            st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
+            with col_speed:
+                st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
 
-        st.progress(
-            step_idx / max(n_steps - 1, 1),
-            text=f"Frame {step_idx + 1} / {n_steps} — {snapshots[step_idx].title}",
-        )
+            st.progress(
+                step_idx / max(n_steps - 1, 1),
+                text=f"Frame {step_idx + 1} / {n_steps} — {snapshots[step_idx].title}",
+            )
 
-    snap = snapshots[step_idx]
+        snap = snapshots[step_idx]
 
-    with st.container(border=True):
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Phase", snap.phase.capitalize())
-        m2.metric("Head", results[snap.head_idx].name if snap.head_idx >= 0 else "—")
-        m3.metric("Stage", snap.substep.capitalize() if snap.substep else snap.phase.capitalize())
-        m4.metric("d_k", str(results[snap.head_idx].spec.d_k) if snap.head_idx >= 0 else "—")
+        with st.container(border=True):
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Phase", snap.phase.capitalize())
+            m2.metric("Head", results[snap.head_idx].name if snap.head_idx >= 0 else "—")
+            m3.metric("Stage", snap.substep.capitalize() if snap.substep else snap.phase.capitalize())
+            m4.metric("d_k", str(results[snap.head_idx].spec.d_k) if snap.head_idx >= 0 else "—")
 
-    # NB: the embed-phase frame reuses the exact same figure as Section 1 above
-    # (same tokens/X/blocks) — give it a distinct `key` so Streamlit doesn't
-    # collide the two plotly_chart elements' auto-generated IDs (they'd
-    # otherwise be identical, which raises StreamlitDuplicateElementId on every
-    # fresh page load, since frame 1 is always the embed phase by default).
-    if snap.phase == "embed":
-        fig = make_embedding_heatmap(sentence.words, X, blocks)
-    else:
-        fig = make_stage_figure(snap)
-    with st.container(border=True):
-        st.plotly_chart(
-            fig, use_container_width=True, config={"displayModeBar": False},
-            key=_k("walkthrough_chart"),
-        )
+        # NB: the embed-phase frame reuses the exact same figure as Section 1 above
+        # (same tokens/X/blocks) — give it a distinct `key` so Streamlit doesn't
+        # collide the two plotly_chart elements' auto-generated IDs (they'd
+        # otherwise be identical, which raises StreamlitDuplicateElementId on every
+        # fresh page load, since frame 1 is always the embed phase by default).
+        if snap.phase == "embed":
+            fig = make_embedding_heatmap(sentence.words, X, blocks)
+        else:
+            fig = make_stage_figure(snap)
+        with st.container(border=True):
+            st.plotly_chart(
+                fig, use_container_width=True, config={"displayModeBar": False},
+                key=_k("walkthrough_chart"),
+            )
 
-    st.info(snap.description)
+        st.info(snap.description)
 
-    with st.expander("📖 Reading the walkthrough"):
-        st.markdown(
-            """
+        with st.expander("📖 Reading the walkthrough"):
+            st.markdown(
+                """
 - **Embed** → each head runs **Q/K/V projection → raw scores → scaled scores → softmax → weighted sum** → **Combine** heads back into the residual
 - **◀ Prev / Next ▶** to step manually, **▶ Play** to auto-advance through every stage of every head
 - The metric cards above show exactly which head and pipeline stage the current chart illustrates
 """
-        )
+            )
+
+        # Auto-advance (must be last — triggers a fragment-scoped rerun after a delay)
+        if playing:
+            if step_idx < n_steps - 1:
+                time.sleep(DELAY)
+                st.session_state[_k("step_idx")] = step_idx + 1
+                st.rerun(scope="fragment")
+            else:
+                st.session_state[_k("playing")] = False
+                st.rerun(scope="fragment")
+
+    _playback()
 
     st.markdown("---")
 
@@ -339,15 +360,3 @@ with col_main:
         f"**“{sentence.words[query_idx]}”**:<br>" + "  ".join(spans),
         unsafe_allow_html=True,
     )
-
-    # -------------------------------------------------------------------
-    # Auto-advance (must be last — triggers rerun after a delay)
-    # -------------------------------------------------------------------
-    if playing:
-        if step_idx < n_steps - 1:
-            time.sleep(DELAY)
-            st.session_state[_k("step_idx")] = step_idx + 1
-            st.rerun()
-        else:
-            st.session_state[_k("playing")] = False
-            st.rerun()

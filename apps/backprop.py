@@ -146,154 +146,150 @@ with col_main:
     )
 
     # -------------------------------------------------------------------
-    # Playback controls (pure Streamlit — no Plotly updatemenus)
+    # Playback controls, metrics, charts, and auto-advance all live inside
+    # one fragment: st.rerun() during autoplay used to fully rerun the
+    # whole page (title/caption/params rail/about-section included)
+    # several times a second, and small timing differences in how long
+    # each of those took to re-render showed up as visible flicker/layout
+    # shift on every frame. Scoping the rerun to just this fragment keeps
+    # everything above it (and the sidebar) completely static.
     # -------------------------------------------------------------------
-    # Defensive clamp: a widget interaction (e.g. changing a sidebar parameter)
-    # can fire while an autoplay rerun for the *previous* run is still in flight.
-    # Both reruns write to the same "step_idx" key, and the previous run may have
-    # had a different (often larger) frame count, so the value read back here
-    # is not guaranteed to be in range for the *current* `snapshots`. Clamping
-    # on every read/write is what keeps that race from throwing an IndexError
-    # below instead of just snapping back to a valid frame.
-    step_idx: int = st.session_state.get(_k("step_idx"), 0)
-    step_idx = max(0, min(step_idx, n_steps - 1))
-    st.session_state[_k("step_idx")] = step_idx
-    playing: bool = st.session_state.get(_k("playing"), False)
+    @st.fragment
+    def _playback() -> None:
+        # Defensive clamp: a widget interaction (e.g. changing a sidebar parameter)
+        # can fire while an autoplay rerun for the *previous* run is still in flight.
+        # Both reruns write to the same "step_idx" key, and the previous run may have
+        # had a different (often larger) frame count, so the value read back here
+        # is not guaranteed to be in range for the *current* `snapshots`. Clamping
+        # on every read/write is what keeps that race from throwing an IndexError
+        # below instead of just snapping back to a valid frame.
+        step_idx: int = st.session_state.get(_k("step_idx"), 0)
+        step_idx = max(0, min(step_idx, n_steps - 1))
+        st.session_state[_k("step_idx")] = step_idx
+        playing: bool = st.session_state.get(_k("playing"), False)
 
-    with st.container(border=True):
-        speed = st.select_slider(
-            "Playback speed",
-            options=["0.5×", "1×", "2×", "4×"],
-            value="1×",
-            label_visibility="collapsed",
-            key=_k("speed"),
-        )
-        DELAY = {"0.5×": 0.9, "1×": 0.45, "2×": 0.22, "4×": 0.1}[speed]
-
-        col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
-
-        with col_prev:
-            if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
-                st.session_state[_k("step_idx")] = max(0, step_idx - 1)
-                st.rerun()
-
-        with col_play:
-            if st.button("▶  Play", use_container_width=True,
-                         disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
-                st.session_state[_k("playing")] = True
-                st.rerun()
-
-        with col_pause:
-            if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
-                st.session_state[_k("playing")] = False
-                st.rerun()
-
-        with col_next:
-            if st.button("Next ▶", use_container_width=True,
-                         disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
-                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-                st.rerun()
-
-        with col_speed:
-            st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
-
-        st.progress(
-            step_idx / max(n_steps - 1, 1),
-            text=f"Frame {step_idx + 1} / {n_steps} — {snapshots[step_idx].title}",
-        )
-
-    # -------------------------------------------------------------------
-    # Metric cards
-    # -------------------------------------------------------------------
-    snap = snapshots[step_idx]
-
-    with st.container(border=True):
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Phase", snap.phase.capitalize())
-        m2.metric("Epoch", str(snap.epoch))
-        m3.metric("Loss", f"{snap.loss:.4f}")
-        m4.metric("Accuracy", f"{100 * snap.accuracy:.1f}%")
-
-    # -------------------------------------------------------------------
-    # Charts — decision boundary + network diagram side by side
-    # -------------------------------------------------------------------
-    col_boundary, col_network = st.columns(2)
-    with col_boundary:
         with st.container(border=True):
-            st.plotly_chart(
-                make_boundary_figure(snap, run.grid_x, run.grid_y),
-                use_container_width=True, config={"displayModeBar": False},
-                key=_k("boundary_chart"),
+            speed = st.select_slider(
+                "Playback speed",
+                options=["0.5×", "1×", "2×", "4×"],
+                value="1×",
+                label_visibility="collapsed",
+                key=_k("speed"),
             )
-    with col_network:
-        with st.container(border=True):
-            st.plotly_chart(
-                make_network_figure(snap, run.layer_sizes),
-                use_container_width=True, config={"displayModeBar": False},
-                key=_k("network_chart"),
+            DELAY = {"0.5×": 0.9, "1×": 0.45, "2×": 0.22, "4×": 0.1}[speed]
+
+            col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
+
+            with col_prev:
+                if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
+                    st.session_state[_k("step_idx")] = max(0, step_idx - 1)
+                    st.rerun(scope="fragment")
+
+            with col_play:
+                if st.button("▶  Play", use_container_width=True,
+                             disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
+                    st.session_state[_k("playing")] = True
+                    st.rerun(scope="fragment")
+
+            with col_pause:
+                if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
+                    st.session_state[_k("playing")] = False
+                    st.rerun(scope="fragment")
+
+            with col_next:
+                if st.button("Next ▶", use_container_width=True,
+                             disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
+                    st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                    st.rerun(scope="fragment")
+
+            with col_speed:
+                st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
+
+            st.progress(
+                step_idx / max(n_steps - 1, 1),
+                text=f"Frame {step_idx + 1} / {n_steps} — {snapshots[step_idx].title}",
             )
 
-    if snap.phase == "init":
-        st.info(
-            "**Initialisation** — weights are small random values (Xavier/Glorot "
-            "uniform). The decision surface is essentially noise; the network "
-            "hasn't seen any data yet."
-        )
-    elif snap.phase == "forward":
-        st.info(
-            f"**Forward pass** — the current weights produce a prediction for "
-            f"every point. Loss = **{snap.loss:.4f}**, accuracy = "
-            f"**{100 * snap.accuracy:.1f}%**. The contour on the left *is* the "
-            f"network's current belief about the whole input space, not just "
-            f"the training points."
-        )
-    else:
-        status = (
-            "Loss has stopped improving — training has **converged**."
-            if snap.converged
-            else "Every weight now has a gradient; the update happens right after this frame."
-        )
-        st.info(
-            f"**Backward pass** — the error at the output is propagated back "
-            f"through the chain rule. The network diagram on the right now shows "
-            f"**gradients** instead of weights: blue edges want to increase, red "
-            f"edges want to decrease. {status}"
-        )
+        snap = snapshots[step_idx]
 
-    st.markdown("---")
+        with st.container(border=True):
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Phase", snap.phase.capitalize())
+            m2.metric("Epoch", str(snap.epoch))
+            m3.metric("Loss", f"{snap.loss:.4f}")
+            m4.metric("Accuracy", f"{100 * snap.accuracy:.1f}%")
 
-    # -------------------------------------------------------------------
-    # Loss curve
-    # -------------------------------------------------------------------
-    history = [(s.epoch, s.loss, s.accuracy) for s in snapshots if s.phase != "backward"]
-    click_epoch = next((e for e, _, a in history if a >= 0.95), None)
+        col_boundary, col_network = st.columns(2)
+        with col_boundary:
+            with st.container(border=True):
+                st.plotly_chart(
+                    make_boundary_figure(snap, run.grid_x, run.grid_y),
+                    use_container_width=True, config={"displayModeBar": False},
+                    key=_k("boundary_chart"),
+                )
+        with col_network:
+            with st.container(border=True):
+                st.plotly_chart(
+                    make_network_figure(snap, run.layer_sizes),
+                    use_container_width=True, config={"displayModeBar": False},
+                    key=_k("network_chart"),
+                )
 
-    with st.container(border=True):
-        st.plotly_chart(
-            make_loss_figure(history, snap.epoch, click_epoch),
-            use_container_width=True, config={"displayModeBar": False},
-            key=_k("loss_chart"),
-        )
+        if snap.phase == "init":
+            st.info(
+                "**Initialisation** — weights are small random values (Xavier/Glorot "
+                "uniform). The decision surface is essentially noise; the network "
+                "hasn't seen any data yet."
+            )
+        elif snap.phase == "forward":
+            st.info(
+                f"**Forward pass** — the current weights produce a prediction for "
+                f"every point. Loss = **{snap.loss:.4f}**, accuracy = "
+                f"**{100 * snap.accuracy:.1f}%**. The contour on the left *is* the "
+                f"network's current belief about the whole input space, not just "
+                f"the training points."
+            )
+        else:
+            status = (
+                "Loss has stopped improving — training has **converged**."
+                if snap.converged
+                else "Every weight now has a gradient; the update happens right after this frame."
+            )
+            st.info(
+                f"**Backward pass** — the error at the output is propagated back "
+                f"through the chain rule. The network diagram on the right now shows "
+                f"**gradients** instead of weights: blue edges want to increase, red "
+                f"edges want to decrease. {status}"
+            )
 
-    # -------------------------------------------------------------------
-    # Hidden-neuron activation heat-maps
-    # -------------------------------------------------------------------
-    with st.expander("🔬 Hidden-neuron activation heat-maps (first hidden layer)"):
-        st.caption(
-            "Each tile is one neuron's tanh activation evaluated across the "
-            "entire input space at the current frame. The decision boundary "
-            "above is a weighted sum of exactly these patterns, passed through "
-            "the output layer."
-        )
-        st.plotly_chart(
-            make_activation_heatmap_figure(snap, run.grid_x, run.grid_y),
-            use_container_width=True, config={"displayModeBar": False},
-            key=_k("activation_chart"),
-        )
+        st.markdown("---")
 
-    with st.expander("📖 Reading the animation"):
-        st.markdown(
-            """
+        history = [(s.epoch, s.loss, s.accuracy) for s in snapshots if s.phase != "backward"]
+        click_epoch = next((e for e, _, a in history if a >= 0.95), None)
+
+        with st.container(border=True):
+            st.plotly_chart(
+                make_loss_figure(history, snap.epoch, click_epoch),
+                use_container_width=True, config={"displayModeBar": False},
+                key=_k("loss_chart"),
+            )
+
+        with st.expander("🔬 Hidden-neuron activation heat-maps (first hidden layer)"):
+            st.caption(
+                "Each tile is one neuron's tanh activation evaluated across the "
+                "entire input space at the current frame. The decision boundary "
+                "above is a weighted sum of exactly these patterns, passed through "
+                "the output layer."
+            )
+            st.plotly_chart(
+                make_activation_heatmap_figure(snap, run.grid_x, run.grid_y),
+                use_container_width=True, config={"displayModeBar": False},
+                key=_k("activation_chart"),
+            )
+
+        with st.expander("📖 Reading the animation"):
+            st.markdown(
+                """
 - **Left chart** — decision boundary: blue background = network predicts class 0, red = class 1
 - **Right chart** — network diagram: edge width = magnitude, blue = positive / red = negative
   - On a **forward** frame, edges show the current **weights**
@@ -301,16 +297,16 @@ with col_main:
 - **Loss curve** — always shows the full training run; the red dot tracks the frame you're viewing
 - **◀ Prev / Next ▶** to step manually, **▶ Play** to auto-advance through the whole run
 """
-        )
+            )
 
-    # -------------------------------------------------------------------
-    # Auto-advance (must be last — triggers rerun after a delay)
-    # -------------------------------------------------------------------
-    if playing:
-        if step_idx < n_steps - 1:
-            time.sleep(DELAY)
-            st.session_state[_k("step_idx")] = step_idx + 1
-            st.rerun()
-        else:
-            st.session_state[_k("playing")] = False
-            st.rerun()
+        # Auto-advance (must be last — triggers a fragment-scoped rerun after a delay)
+        if playing:
+            if step_idx < n_steps - 1:
+                time.sleep(DELAY)
+                st.session_state[_k("step_idx")] = step_idx + 1
+                st.rerun(scope="fragment")
+            else:
+                st.session_state[_k("playing")] = False
+                st.rerun(scope="fragment")
+
+    _playback()

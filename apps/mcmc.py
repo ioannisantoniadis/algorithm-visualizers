@@ -158,96 +158,102 @@ with col_main:
     )
 
     # -------------------------------------------------------------------
-    # Playback controls (pure Streamlit — no Plotly updatemenus)
+    # Playback controls, metrics, chart, and auto-advance all live inside
+    # one fragment: st.rerun() during autoplay used to be a full top-to-
+    # bottom script rerun several times a second, which re-executed the
+    # title/caption/params rail/about-section too — small differences in
+    # how long each of those took to re-render showed up as visible
+    # flicker and layout shift on every single frame. A fragment scopes
+    # st.rerun(scope="fragment") to just this block, so everything above
+    # (and the sidebar) stays completely static during playback.
     # -------------------------------------------------------------------
-    step_idx: int = st.session_state.get(_k("step_idx"), 0)
-    step_idx = max(0, min(step_idx, n_frames - 1))
-    st.session_state[_k("step_idx")] = step_idx
-    playing: bool = st.session_state.get(_k("playing"), False)
+    @st.fragment
+    def _playback() -> None:
+        step_idx: int = st.session_state.get(_k("step_idx"), 0)
+        step_idx = max(0, min(step_idx, n_frames - 1))
+        st.session_state[_k("step_idx")] = step_idx
+        playing: bool = st.session_state.get(_k("playing"), False)
 
-    with st.container(border=True):
-        speed = st.select_slider(
-            "Playback speed",
-            options=["0.5×", "1×", "2×", "4×", "8×"],
-            value="2×",
-            label_visibility="collapsed",
-            key=_k("speed"),
-        )
-        DELAY = {"0.5×": 0.6, "1×": 0.3, "2×": 0.15, "4×": 0.07, "8×": 0.03}[speed]
+        with st.container(border=True):
+            speed = st.select_slider(
+                "Playback speed",
+                options=["0.5×", "1×", "2×", "4×", "8×"],
+                value="2×",
+                label_visibility="collapsed",
+                key=_k("speed"),
+            )
+            DELAY = {"0.5×": 0.6, "1×": 0.3, "2×": 0.15, "4×": 0.07, "8×": 0.03}[speed]
 
-        col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
+            col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
 
-        with col_prev:
-            if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
-                st.session_state[_k("step_idx")] = max(0, step_idx - 1)
-                st.rerun()
+            with col_prev:
+                if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
+                    st.session_state[_k("step_idx")] = max(0, step_idx - 1)
+                    st.rerun(scope="fragment")
 
-        with col_play:
-            if st.button("▶  Play", use_container_width=True,
-                         disabled=(playing or step_idx == n_frames - 1), type="primary", key=_k("play")):
-                st.session_state[_k("playing")] = True
-                st.rerun()
+            with col_play:
+                if st.button("▶  Play", use_container_width=True,
+                             disabled=(playing or step_idx == n_frames - 1), type="primary", key=_k("play")):
+                    st.session_state[_k("playing")] = True
+                    st.rerun(scope="fragment")
 
-        with col_pause:
-            if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
-                st.session_state[_k("playing")] = False
-                st.rerun()
+            with col_pause:
+                if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
+                    st.session_state[_k("playing")] = False
+                    st.rerun(scope="fragment")
 
-        with col_next:
-            if st.button("Next ▶", use_container_width=True,
-                         disabled=(step_idx == n_frames - 1 or playing), key=_k("next")):
-                st.session_state[_k("step_idx")] = min(n_frames - 1, step_idx + 1)
-                st.rerun()
+            with col_next:
+                if st.button("Next ▶", use_container_width=True,
+                             disabled=(step_idx == n_frames - 1 or playing), key=_k("next")):
+                    st.session_state[_k("step_idx")] = min(n_frames - 1, step_idx + 1)
+                    st.rerun(scope="fragment")
 
-        with col_speed:
-            st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
+            with col_speed:
+                st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
 
-        st.progress(
-            step_idx / max(n_frames - 1, 1),
-            text=f"Step {step_idx} / {n_frames - 1} — {snapshots[step_idx].title}",
-        )
+            st.progress(
+                step_idx / max(n_frames - 1, 1),
+                text=f"Step {step_idx} / {n_frames - 1} — {snapshots[step_idx].title}",
+            )
 
-    # -------------------------------------------------------------------
-    # Metrics + dashboard for the current snapshot
-    # -------------------------------------------------------------------
-    snap = snapshots[step_idx]
+        snap = snapshots[step_idx]
 
-    with st.container(border=True):
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Iteration", str(snap.iteration))
-        m2.metric("Cumulative acceptance", f"{snap.acceptance_rate:.1%}" if snap.iteration else "—")
-        m3.metric("log p̃(current)", f"{snap.log_density:.2f}")
+        with st.container(border=True):
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Iteration", str(snap.iteration))
+            m2.metric("Cumulative acceptance", f"{snap.acceptance_rate:.1%}" if snap.iteration else "—")
+            m3.metric("log p̃(current)", f"{snap.log_density:.2f}")
+            if snap.iteration == 0:
+                m4.metric("Outcome", "Start")
+            else:
+                m4.metric("Outcome", "Accepted ✓" if snap.accepted else "Rejected ✗")
+
+        fig = make_figure(snap, grid, marginal, max_lag=40)
+        with st.container(border=True):
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart"))
+
         if snap.iteration == 0:
-            m4.metric("Outcome", "Start")
+            st.info(
+                "**Start** — the chain is deliberately initialised away from the bulk of the "
+                "probability mass, so you can watch it find its way there (this early phase "
+                "is called *burn-in*)."
+            )
+        elif snap.accepted:
+            st.success(
+                "**Accepted** — the proposal landed somewhere at least as dense as the "
+                "current state (or won the coin-flip test against a less-dense point), "
+                "so the chain moves there."
+            )
         else:
-            m4.metric("Outcome", "Accepted ✓" if snap.accepted else "Rejected ✗")
+            st.warning(
+                "**Rejected** — the proposal landed in lower-density territory and lost "
+                "the coin-flip test, so the chain repeats its current state — visible as "
+                "a flat step in the trace plot."
+            )
 
-    fig = make_figure(snap, grid, marginal, max_lag=40)
-    with st.container(border=True):
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart"))
-
-    if snap.iteration == 0:
-        st.info(
-            "**Start** — the chain is deliberately initialised away from the bulk of the "
-            "probability mass, so you can watch it find its way there (this early phase "
-            "is called *burn-in*)."
-        )
-    elif snap.accepted:
-        st.success(
-            "**Accepted** — the proposal landed somewhere at least as dense as the "
-            "current state (or won the coin-flip test against a less-dense point), "
-            "so the chain moves there."
-        )
-    else:
-        st.warning(
-            "**Rejected** — the proposal landed in lower-density territory and lost "
-            "the coin-flip test, so the chain repeats its current state — visible as "
-            "a flat step in the trace plot."
-        )
-
-    with st.expander("📖 Reading the dashboard"):
-        st.markdown(
-            """
+        with st.expander("📖 Reading the dashboard"):
+            st.markdown(
+                """
 - **Top-left** — the target density (indigo contours) and the path the chain has walked so
   far. The indigo star marks the current state; a dotted rose line marks a proposal that was
   just rejected (the "road not taken").
@@ -260,16 +266,16 @@ with col_main:
   effective sample size.
 - Use **◀ Prev / Next ▶** to step one proposal at a time, or **▶ Play** to auto-advance.
 """
-        )
+            )
 
-    # -------------------------------------------------------------------
-    # Auto-advance (must be last — triggers rerun after a delay)
-    # -------------------------------------------------------------------
-    if playing:
-        if step_idx < n_frames - 1:
-            time.sleep(DELAY)
-            st.session_state[_k("step_idx")] = step_idx + 1
-            st.rerun()
-        else:
-            st.session_state[_k("playing")] = False
-            st.rerun()
+        # Auto-advance (must be last — triggers a fragment-scoped rerun after a delay)
+        if playing:
+            if step_idx < n_frames - 1:
+                time.sleep(DELAY)
+                st.session_state[_k("step_idx")] = step_idx + 1
+                st.rerun(scope="fragment")
+            else:
+                st.session_state[_k("playing")] = False
+                st.rerun(scope="fragment")
+
+    _playback()

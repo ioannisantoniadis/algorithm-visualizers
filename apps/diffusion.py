@@ -210,157 +210,156 @@ with col_main:
         st.session_state[_k("_last_view")] = view
 
     # -------------------------------------------------------------------
-    # Playback controls (pure Streamlit — no Plotly updatemenus)
+    # Playback controls, metrics, charts, and auto-advance all live inside
+    # one fragment: st.rerun() during autoplay used to fully rerun the
+    # whole page (title/caption/params rail/about-section included)
+    # several times a second, and small timing differences in how long
+    # each of those took to re-render showed up as visible flicker/layout
+    # shift on every frame. Scoping the rerun to just this fragment keeps
+    # everything above it (and the sidebar) completely static.
     # -------------------------------------------------------------------
-    step_idx: int = st.session_state.get(_k("step_idx"), 0)
-    # Clamp defensively: rapid clicking can fire a click on Prev/Next (or a stale
-    # "Jump to step" slider value) before Streamlit has re-rendered the button's
-    # disabled state, letting step_idx drift past either end of the chain and
-    # raising an IndexError a few lines down at snapshots[step_idx]. Clamping
-    # here — and again in every handler below — makes step_idx always safe to
-    # index with, regardless of how fast the UI is clicked.
-    step_idx = max(0, min(step_idx, n_steps - 1))
-    st.session_state[_k("step_idx")] = step_idx
-    playing: bool = st.session_state.get(_k("playing"), False)
+    @st.fragment
+    def _playback() -> None:
+        step_idx: int = st.session_state.get(_k("step_idx"), 0)
+        # Clamp defensively: rapid clicking can fire a click on Prev/Next (or a stale
+        # "Jump to step" slider value) before Streamlit has re-rendered the button's
+        # disabled state, letting step_idx drift past either end of the chain and
+        # raising an IndexError a few lines down at snapshots[step_idx]. Clamping
+        # here — and again in every handler below — makes step_idx always safe to
+        # index with, regardless of how fast the UI is clicked.
+        step_idx = max(0, min(step_idx, n_steps - 1))
+        st.session_state[_k("step_idx")] = step_idx
+        playing: bool = st.session_state.get(_k("playing"), False)
 
-    with st.container(border=True):
-        speed = st.select_slider(
-            "Playback speed", options=["0.5×", "1×", "2×", "4×"], value="1×",
-            label_visibility="collapsed",
-            key=_k("speed"),
-        )
-        DELAY = {"0.5×": 0.4, "1×": 0.2, "2×": 0.1, "4×": 0.04}[speed]
-
-        col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
-        with col_prev:
-            if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
-                st.session_state[_k("step_idx")] = max(0, step_idx - 1)
-                st.rerun()
-        with col_play:
-            if st.button("▶  Play", use_container_width=True,
-                         disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
-                st.session_state[_k("playing")] = True
-                st.rerun()
-        with col_pause:
-            if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
-                st.session_state[_k("playing")] = False
-                st.rerun()
-        with col_next:
-            if st.button("Next ▶", use_container_width=True,
-                         disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
-                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-                st.rerun()
-        with col_speed:
-            st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
-
-        # A direct slider lets you jump straight to any diffusion step, not just
-        # step through one frame at a time
-        slider_idx = st.slider(
-            "Jump to step", min_value=0, max_value=n_steps - 1, value=step_idx,
-            disabled=playing, label_visibility="visible",
-            key=_k("jump_slider"),
-        )
-        if slider_idx != step_idx and not playing:
-            st.session_state[_k("step_idx")] = max(0, min(slider_idx, n_steps - 1))
-            st.rerun()
-
-        st.progress(
-            step_idx / max(n_steps - 1, 1),
-            text=f"Frame {step_idx + 1} / {n_steps} — {snapshots[step_idx].title}",
-        )
-
-    # -------------------------------------------------------------------
-    # Metric cards
-    # -------------------------------------------------------------------
-    snap = snapshots[step_idx]
-    snr_display = "∞" if np.isinf(snap.snr_t) else f"{snap.snr_t:.3f}"
-
-    with st.container(border=True):
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Step t", str(snap.step))
-        m2.metric("β_t", f"{snap.beta_t:.5f}")
-        m3.metric("ᾱ_t (signal remaining)", f"{snap.alpha_bar_t:.3f}")
-        m4.metric("SNR_t", snr_display)
-
-    # -------------------------------------------------------------------
-    # Point-cloud figure
-    # -------------------------------------------------------------------
-    if is_forward:
-        fig = make_point_figure(snap, labels, x_range, y_range, ref_points=None)
-    else:
-        fig = make_point_figure(snap, None, x_range, y_range, ref_points=X0, title=snap.title)
-
-    with st.container(border=True):
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("main_point_chart"))
-
-    if is_forward:
-        if snap.step == 0:
-            st.info(
-                "**t=0 — the original data.** From here, each step blends in a little "
-                "Gaussian noise: `x_t = sqrt(1-β_t)·x_{t-1} + sqrt(β_t)·ε_t`. No "
-                "learning happens in this direction — it's a fixed, known process."
-            )
-        elif snap.step == T:
-            st.info(
-                f"**t={T} — pure noise.** After {T} steps essentially all structure is "
-                f"gone: ᾱ_t = {snap.alpha_bar_t:.4f}, meaning only "
-                f"{snap.alpha_bar_t * 100:.2f}% of the original signal variance "
-                "survives. The distribution is now indistinguishable from N(0, I)."
-            )
-        else:
-            st.info(
-                f"**Step t={snap.step}.** ᾱ_t = {snap.alpha_bar_t:.3f} of the original "
-                f"signal variance remains; the rest has been replaced by noise. "
-                f"SNR_t = {snr_display} — a rough measure of how hard it would be to "
-                "recover x₀ from this frame alone."
-            )
-    else:
-        if snap.step == T:
-            st.info(
-                "**t=T — starting point.** Every generated sample begins as pure "
-                "Gaussian noise, exactly matching the distribution the forward "
-                "process converges to. The faint grey cloud is the *real* training "
-                "data, shown as a target to compare against."
-            )
-        elif snap.step == 0:
-            st.info(
-                "**t=0 — final sample.** This is the model's output: pure noise, "
-                "repeatedly denoised one small step at a time using only the score "
-                "network's noise predictions. Compare the coloured points against "
-                "the faint reference cloud — a well-trained model should roughly "
-                "recover the target shape."
-            )
-        else:
-            st.info(
-                f"**Step t={snap.step}.** The network predicts the noise ε̂ currently "
-                f"in the sample and a small amount of it is subtracted, following the "
-                f"DDPM update `x_(t-1) = (x_t - β_t/√(1-ᾱ_t)·ε̂) / √α_t + √β_t·z`. "
-                f"ᾱ_t = {snap.alpha_bar_t:.3f}."
-            )
-
-    st.markdown("---")
-
-    # -------------------------------------------------------------------
-    # Noise schedule + training loss — always visible, static
-    # -------------------------------------------------------------------
-    col_schedule, col_loss = st.columns(2)
-    with col_schedule:
         with st.container(border=True):
-            st.plotly_chart(make_schedule_figure(schedule), use_container_width=True,
-                             config={"displayModeBar": False}, key=_k("schedule_chart"))
-    with col_loss:
+            speed = st.select_slider(
+                "Playback speed", options=["0.5×", "1×", "2×", "4×"], value="1×",
+                label_visibility="collapsed",
+                key=_k("speed"),
+            )
+            DELAY = {"0.5×": 0.4, "1×": 0.2, "2×": 0.1, "4×": 0.04}[speed]
+
+            col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
+            with col_prev:
+                if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
+                    st.session_state[_k("step_idx")] = max(0, step_idx - 1)
+                    st.rerun(scope="fragment")
+            with col_play:
+                if st.button("▶  Play", use_container_width=True,
+                             disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
+                    st.session_state[_k("playing")] = True
+                    st.rerun(scope="fragment")
+            with col_pause:
+                if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
+                    st.session_state[_k("playing")] = False
+                    st.rerun(scope="fragment")
+            with col_next:
+                if st.button("Next ▶", use_container_width=True,
+                             disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
+                    st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                    st.rerun(scope="fragment")
+            with col_speed:
+                st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
+
+            # A direct slider lets you jump straight to any diffusion step, not just
+            # step through one frame at a time
+            slider_idx = st.slider(
+                "Jump to step", min_value=0, max_value=n_steps - 1, value=step_idx,
+                disabled=playing, label_visibility="visible",
+                key=_k("jump_slider"),
+            )
+            if slider_idx != step_idx and not playing:
+                st.session_state[_k("step_idx")] = max(0, min(slider_idx, n_steps - 1))
+                st.rerun(scope="fragment")
+
+            st.progress(
+                step_idx / max(n_steps - 1, 1),
+                text=f"Frame {step_idx + 1} / {n_steps} — {snapshots[step_idx].title}",
+            )
+
+        snap = snapshots[step_idx]
+        snr_display = "∞" if np.isinf(snap.snr_t) else f"{snap.snr_t:.3f}"
+
         with st.container(border=True):
-            st.plotly_chart(make_loss_figure(run.loss_history), use_container_width=True,
-                             config={"displayModeBar": False}, key=_k("loss_chart"))
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Step t", str(snap.step))
+            m2.metric("β_t", f"{snap.beta_t:.5f}")
+            m3.metric("ᾱ_t (signal remaining)", f"{snap.alpha_bar_t:.3f}")
+            m4.metric("SNR_t", snr_display)
 
-    st.caption(
-        f"Final training loss: **{run.loss_history[-1]:.4f}** "
-        f"(started at **{run.loss_history[0]:.4f}**) over **{epochs}** epochs."
-    )
+        if is_forward:
+            fig = make_point_figure(snap, labels, x_range, y_range, ref_points=None)
+        else:
+            fig = make_point_figure(snap, None, x_range, y_range, ref_points=X0, title=snap.title)
 
-    with st.expander("📖 Reading the visualisation"):
-        st.markdown(
-            """
+        with st.container(border=True):
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("main_point_chart"))
+
+        if is_forward:
+            if snap.step == 0:
+                st.info(
+                    "**t=0 — the original data.** From here, each step blends in a little "
+                    "Gaussian noise: `x_t = sqrt(1-β_t)·x_{t-1} + sqrt(β_t)·ε_t`. No "
+                    "learning happens in this direction — it's a fixed, known process."
+                )
+            elif snap.step == T:
+                st.info(
+                    f"**t={T} — pure noise.** After {T} steps essentially all structure is "
+                    f"gone: ᾱ_t = {snap.alpha_bar_t:.4f}, meaning only "
+                    f"{snap.alpha_bar_t * 100:.2f}% of the original signal variance "
+                    "survives. The distribution is now indistinguishable from N(0, I)."
+                )
+            else:
+                st.info(
+                    f"**Step t={snap.step}.** ᾱ_t = {snap.alpha_bar_t:.3f} of the original "
+                    f"signal variance remains; the rest has been replaced by noise. "
+                    f"SNR_t = {snr_display} — a rough measure of how hard it would be to "
+                    "recover x₀ from this frame alone."
+                )
+        else:
+            if snap.step == T:
+                st.info(
+                    "**t=T — starting point.** Every generated sample begins as pure "
+                    "Gaussian noise, exactly matching the distribution the forward "
+                    "process converges to. The faint grey cloud is the *real* training "
+                    "data, shown as a target to compare against."
+                )
+            elif snap.step == 0:
+                st.info(
+                    "**t=0 — final sample.** This is the model's output: pure noise, "
+                    "repeatedly denoised one small step at a time using only the score "
+                    "network's noise predictions. Compare the coloured points against "
+                    "the faint reference cloud — a well-trained model should roughly "
+                    "recover the target shape."
+                )
+            else:
+                st.info(
+                    f"**Step t={snap.step}.** The network predicts the noise ε̂ currently "
+                    f"in the sample and a small amount of it is subtracted, following the "
+                    f"DDPM update `x_(t-1) = (x_t - β_t/√(1-ᾱ_t)·ε̂) / √α_t + √β_t·z`. "
+                    f"ᾱ_t = {snap.alpha_bar_t:.3f}."
+                )
+
+        st.markdown("---")
+
+        col_schedule, col_loss = st.columns(2)
+        with col_schedule:
+            with st.container(border=True):
+                st.plotly_chart(make_schedule_figure(schedule), use_container_width=True,
+                                 config={"displayModeBar": False}, key=_k("schedule_chart"))
+        with col_loss:
+            with st.container(border=True):
+                st.plotly_chart(make_loss_figure(run.loss_history), use_container_width=True,
+                                 config={"displayModeBar": False}, key=_k("loss_chart"))
+
+        st.caption(
+            f"Final training loss: **{run.loss_history[-1]:.4f}** "
+            f"(started at **{run.loss_history[0]:.4f}**) over **{epochs}** epochs."
+        )
+
+        with st.expander("📖 Reading the visualisation"):
+            st.markdown(
+                """
 - **Forward process** — a fixed, deterministic-in-distribution chain; no
   training involved. Every step samples fresh noise and blends it in. Watch
   the coloured clusters spread out and lose their shape as t increases.
@@ -382,16 +381,16 @@ with col_main:
 - Switching between **Forward** and **Reverse** resets the step slider to
   the start of that process.
 """
-        )
+            )
 
-    # -------------------------------------------------------------------
-    # Auto-advance (must be last — triggers rerun after a delay)
-    # -------------------------------------------------------------------
-    if playing:
-        if step_idx < n_steps - 1:
-            time.sleep(DELAY)
-            st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-            st.rerun()
-        else:
-            st.session_state[_k("playing")] = False
-            st.rerun()
+        # Auto-advance (must be last — triggers a fragment-scoped rerun after a delay)
+        if playing:
+            if step_idx < n_steps - 1:
+                time.sleep(DELAY)
+                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                st.rerun(scope="fragment")
+            else:
+                st.session_state[_k("playing")] = False
+                st.rerun(scope="fragment")
+
+    _playback()

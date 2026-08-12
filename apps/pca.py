@@ -139,158 +139,173 @@ with col_main:
         ],
     )
 
-    with st.container(border=True):
-        c_meta = st.columns(dim + 2)
-        for i in range(dim):
-            c_meta[i].metric(f"λ{i + 1}", f"{ev[i]:.4f}")
-        c_meta[-2].metric("trace(S)", f"{tr:.4f}")
-        c_meta[-1].metric("Frames", str(n_steps))
-
-    with st.container(border=True):
-        speed = st.select_slider(
-            "Playback speed", options=["0.5×", "1×", "2×", "4×"], value="1×",
-            label_visibility="collapsed",
-            key=_k("speed"),
-        )
-        DELAY = {"0.5×": 1.2, "1×": 0.6, "2×": 0.32, "4×": 0.16}[speed]
-
-        col_prev, col_play, col_pause, col_next, col_spd = st.columns([1, 1.2, 1.2, 1, 3])
-
-        with col_prev:
-            if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
-                st.session_state[_k("step_idx")] = max(0, step_idx - 1)
-                st.rerun()
-
-        with col_play:
-            if st.button("▶  Play", use_container_width=True,
-                         disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
-                st.session_state[_k("playing")] = True
-                st.rerun()
-
-        with col_pause:
-            if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
-                st.session_state[_k("playing")] = False
-                st.rerun()
-
-        with col_next:
-            if st.button("Next ▶", use_container_width=True,
-                         disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
-                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-                st.rerun()
-
-        with col_spd:
-            st.caption(f"Speed **{speed}** ({DELAY:.2f}s / frame)")
-
-        st.progress(
-            step_idx / max(n_steps - 1, 1),
-            text=f"Frame {step_idx + 1} / {n_steps} — {snap.title}",
-        )
-
-    # ----- Algebra panel + figures -----
-    left, right = st.columns([1.15, 1.5], gap="large")
-
-    with left:
-        st.markdown("### Numbers tied to this frame")
-        st.caption("Same objects as in lecture notes — updated as you step.")
-
-        S_df = pd.DataFrame(snap.cov, index=axis_lbl, columns=axis_lbl)
-        st.markdown("**Sample covariance** **S** (Bessel n−1)")
-        st.dataframe(S_df.round(4), use_container_width=True)
-
-        eig_df = pd.DataFrame(pct_rows).set_index("PC")
-        st.markdown("**Spectrum** (λᵢ / trace shares)")
-        st.dataframe(eig_df.round(4), use_container_width=True)
-
-        V = snap.evecs
-        V_df = pd.DataFrame(
-            V,
-            index=[f"coord {i + 1}" for i in range(dim)],
-            columns=[f"PC{j + 1}" for j in range(dim)],
-        )
-        st.markdown("**V** — eigenvectors as columns (PC directions)")
-        st.dataframe(V_df.round(4), use_container_width=True)
-
-        st.markdown("**Frame metrics**")
-        m1, m2 = st.columns(2)
-        m1.metric("Phase", snap.phase)
-        m2.metric("k (recon.)", str(snap.k_components) if snap.phase == "reconstruct" else "—")
-        m3, m4 = st.columns(2)
-        m3.metric("MSE (mean sq. entry)", f"{snap.mse:.5f}" if snap.phase == "reconstruct" else "—")
-        m4.metric("Var. captured", f"{100 * snap.cumulative_variance:.1f}%" if snap.phase == "reconstruct" else "—")
-
-        st.latex(
-            r"\hat{\mathbf{X}} = \tilde{\mathbf{X}} V_{1:k} V_{1:k}^{\top} + \mathbf{1}\mu^{\top}"
-        )
-        st.caption(
-            r"MSE = mean of $(X_{ij}-\hat X_{ij})^2$ over all entries; "
-            r"''Var. captured'' = $\sum_{j\leq k}\lambda_j\,/\,\mathrm{tr}(S)$."
-        )
-
-    with right:
+    # -------------------------------------------------------------------
+    # Metrics, playback controls, algebra panel, figures, and auto-advance
+    # all live inside one fragment: st.rerun() during autoplay used to
+    # fully rerun the whole page (title/caption/params rail/about-section
+    # included) several times a second, and small timing differences in
+    # how long each of those took to re-render showed up as visible
+    # flicker/layout shift on every frame. Scoping the rerun to just this
+    # fragment keeps everything above it (and the sidebar) completely
+    # static.
+    # -------------------------------------------------------------------
+    @st.fragment
+    def _playback() -> None:
         with st.container(border=True):
-            fig_main = make_static_figure(snap, labels=labels)
-            st.plotly_chart(fig_main, use_container_width=True, config={"displayModeBar": False}, key=_k("chart_main"))
-            if dim == 3:
-                st.caption(
-                    "**Below:** the **(x₁, x₂)** marginal — information along **x₃** is invisible here, "
-                    "which is why 3-D PCA needs all three coordinates in the main plot."
+            c_meta = st.columns(dim + 2)
+            for i in range(dim):
+                c_meta[i].metric(f"λ{i + 1}", f"{ev[i]:.4f}")
+            c_meta[-2].metric("trace(S)", f"{tr:.4f}")
+            c_meta[-1].metric("Frames", str(n_steps))
+
+        with st.container(border=True):
+            speed = st.select_slider(
+                "Playback speed", options=["0.5×", "1×", "2×", "4×"], value="1×",
+                label_visibility="collapsed",
+                key=_k("speed"),
+            )
+            DELAY = {"0.5×": 1.2, "1×": 0.6, "2×": 0.32, "4×": 0.16}[speed]
+
+            col_prev, col_play, col_pause, col_next, col_spd = st.columns([1, 1.2, 1.2, 1, 3])
+
+            with col_prev:
+                if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
+                    st.session_state[_k("step_idx")] = max(0, step_idx - 1)
+                    st.rerun(scope="fragment")
+
+            with col_play:
+                if st.button("▶  Play", use_container_width=True,
+                             disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
+                    st.session_state[_k("playing")] = True
+                    st.rerun(scope="fragment")
+
+            with col_pause:
+                if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
+                    st.session_state[_k("playing")] = False
+                    st.rerun(scope="fragment")
+
+            with col_next:
+                if st.button("Next ▶", use_container_width=True,
+                             disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
+                    st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                    st.rerun(scope="fragment")
+
+            with col_spd:
+                st.caption(f"Speed **{speed}** ({DELAY:.2f}s / frame)")
+
+            st.progress(
+                step_idx / max(n_steps - 1, 1),
+                text=f"Frame {step_idx + 1} / {n_steps} — {snap.title}",
+            )
+
+        # ----- Algebra panel + figures -----
+        left, right = st.columns([1.15, 1.5], gap="large")
+
+        with left:
+            st.markdown("### Numbers tied to this frame")
+            st.caption("Same objects as in lecture notes — updated as you step.")
+
+            S_df = pd.DataFrame(snap.cov, index=axis_lbl, columns=axis_lbl)
+            st.markdown("**Sample covariance** **S** (Bessel n−1)")
+            st.dataframe(S_df.round(4), use_container_width=True)
+
+            eig_df = pd.DataFrame(pct_rows).set_index("PC")
+            st.markdown("**Spectrum** (λᵢ / trace shares)")
+            st.dataframe(eig_df.round(4), use_container_width=True)
+
+            V = snap.evecs
+            V_df = pd.DataFrame(
+                V,
+                index=[f"coord {i + 1}" for i in range(dim)],
+                columns=[f"PC{j + 1}" for j in range(dim)],
+            )
+            st.markdown("**V** — eigenvectors as columns (PC directions)")
+            st.dataframe(V_df.round(4), use_container_width=True)
+
+            st.markdown("**Frame metrics**")
+            m1, m2 = st.columns(2)
+            m1.metric("Phase", snap.phase)
+            m2.metric("k (recon.)", str(snap.k_components) if snap.phase == "reconstruct" else "—")
+            m3, m4 = st.columns(2)
+            m3.metric("MSE (mean sq. entry)", f"{snap.mse:.5f}" if snap.phase == "reconstruct" else "—")
+            m4.metric("Var. captured", f"{100 * snap.cumulative_variance:.1f}%" if snap.phase == "reconstruct" else "—")
+
+            st.latex(
+                r"\hat{\mathbf{X}} = \tilde{\mathbf{X}} V_{1:k} V_{1:k}^{\top} + \mathbf{1}\mu^{\top}"
+            )
+            st.caption(
+                r"MSE = mean of $(X_{ij}-\hat X_{ij})^2$ over all entries; "
+                r"''Var. captured'' = $\sum_{j\leq k}\lambda_j\,/\,\mathrm{tr}(S)$."
+            )
+
+        with right:
+            with st.container(border=True):
+                fig_main = make_static_figure(snap, labels=labels)
+                st.plotly_chart(fig_main, use_container_width=True, config={"displayModeBar": False}, key=_k("chart_main"))
+                if dim == 3:
+                    st.caption(
+                        "**Below:** the **(x₁, x₂)** marginal — information along **x₃** is invisible here, "
+                        "which is why 3-D PCA needs all three coordinates in the main plot."
+                    )
+                    fig_m = make_marginal_xy_figure(snap, labels=labels)
+                    st.plotly_chart(fig_m, use_container_width=True, config={"displayModeBar": False}, key=_k("chart_marginal"))
+
+        # ----- Narrative callouts -----
+        if snap.phase == "raw":
+            st.info(
+                "**Raw data** — **μ** marks the affine centre; PCA always works on **X̃** = **X** − **μ**."
+            )
+        elif snap.phase == "centered":
+            st.info(
+                "**Centreing** — **S** describes second moments around **μ**; eigenvectors are directions "
+                "of maximal variance *from here*."
+            )
+        elif snap.phase == "covariance":
+            if dim == 2:
+                st.info(
+                    r"**Ellipse** — boundary where **x̃**ᵀ**S**⁻¹**x̃** = χ²₀.₉₅ (df = 2). Same **V** as PCA."
                 )
-                fig_m = make_marginal_xy_figure(snap, labels=labels)
-                st.plotly_chart(fig_m, use_container_width=True, config={"displayModeBar": False}, key=_k("chart_marginal"))
-
-    # ----- Narrative callouts -----
-    if snap.phase == "raw":
-        st.info(
-            "**Raw data** — **μ** marks the affine centre; PCA always works on **X̃** = **X** − **μ**."
-        )
-    elif snap.phase == "centered":
-        st.info(
-            "**Centreing** — **S** describes second moments around **μ**; eigenvectors are directions "
-            "of maximal variance *from here*."
-        )
-    elif snap.phase == "covariance":
-        if dim == 2:
+            else:
+                st.info(
+                    r"**Ellipsoid** — **x̃**ᵀ**S**⁻¹**x̃** = χ²₀.₉₅ (df = 3). The marginal plot uses the **2×2** block "
+                    r"**S**₂₂ for its own 95% ellipse — not a camera slice of the surface."
+                )
+        elif snap.phase == "eigen":
             st.info(
-                r"**Ellipse** — boundary where **x̃**ᵀ**S**⁻¹**x̃** = χ²₀.₉₅ (df = 2). Same **V** as PCA."
+                "**Eigenvectors** — segment lengths 2√λⱼ (2σ along each PC in centred space). "
+                f"Colours: PC1 orange, PC2 purple{', PC3 teal' if dim == 3 else ''}."
             )
         else:
-            st.info(
-                r"**Ellipsoid** — **x̃**ᵀ**S**⁻¹**x̃** = χ²₀.₉₅ (df = 3). The marginal plot uses the **2×2** block "
-                r"**S**₂₂ for its own 95% ellipse — not a camera slice of the surface."
-            )
-    elif snap.phase == "eigen":
-        st.info(
-            "**Eigenvectors** — segment lengths 2√λⱼ (2σ along each PC in centred space). "
-            f"Colours: PC1 orange, PC2 purple{', PC3 teal' if dim == 3 else ''}."
-        )
-    else:
-        k = snap.k_components
-        if k == 0:
-            st.warning(
-                "Rank-0 reconstruction: **every** row of **X̂** is **μ**; error measures what variance you threw away."
-            )
-        elif k < dim:
-            st.success(
-                f"Best rank-{k} linear approximation in ℝ^{dim}: residuals are orthogonal to the fitted subspace "
-                "(check both **3-D** and **marginal** views)."
-            )
-        else:
-            st.success(
-                f"Full rank in ℝ^{dim}: **X̂** = **X** (numerically). No information left to remove."
-            )
+            k = snap.k_components
+            if k == 0:
+                st.warning(
+                    "Rank-0 reconstruction: **every** row of **X̂** is **μ**; error measures what variance you threw away."
+                )
+            elif k < dim:
+                st.success(
+                    f"Best rank-{k} linear approximation in ℝ^{dim}: residuals are orthogonal to the fitted subspace "
+                    "(check both **3-D** and **marginal** views)."
+                )
+            else:
+                st.success(
+                    f"Full rank in ℝ^{dim}: **X̂** = **X** (numerically). No information left to remove."
+                )
 
-    with st.expander("📖 Legend"):
-        st.markdown(f"""
+        with st.expander("📖 Legend"):
+            st.markdown(f"""
 - Colours = generator labels (PCA is **blind** to them)
 - **χ²** contours = illustrative 95% Mahalanobis shells (__not__ a claim that data are Gaussian)
 - **MSE** = Frobenius mean-squared entry, ‖**X**−**X̂**‖_F² / (n·{dim})
 """)
 
-    if playing:
-        if step_idx < n_steps - 1:
-            time.sleep(DELAY)
-            st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-            st.rerun()
-        else:
-            st.session_state[_k("playing")] = False
-            st.rerun()
+        # Auto-advance (must be last — triggers a fragment-scoped rerun after a delay)
+        if playing:
+            if step_idx < n_steps - 1:
+                time.sleep(DELAY)
+                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                st.rerun(scope="fragment")
+            else:
+                st.session_state[_k("playing")] = False
+                st.rerun(scope="fragment")
+
+    _playback()

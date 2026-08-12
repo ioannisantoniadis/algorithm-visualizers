@@ -124,100 +124,102 @@ with col_main:
         m4.metric("ε / minPts",     f"{eps} / {min_samples}")
 
     # -------------------------------------------------------------------
-    # Playback controls  (pure Streamlit — no Plotly updatemenus)
+    # Playback controls, chart, and auto-advance all live inside one
+    # fragment: st.rerun() during autoplay used to fully rerun the whole
+    # page (title/caption/params rail/about-section included) several
+    # times a second, and small timing differences in how long each of
+    # those took to re-render showed up as visible flicker/layout shift
+    # on every frame. Scoping the rerun to just this fragment keeps
+    # everything above it (and the sidebar) completely static.
     # -------------------------------------------------------------------
-    step_idx: int = st.session_state.get(_k("step_idx"), 0)
-    step_idx = max(0, min(step_idx, n_steps - 1))
-    st.session_state[_k("step_idx")] = step_idx
-    playing:  bool = st.session_state.get(_k("playing"), False)
+    @st.fragment
+    def _playback() -> None:
+        step_idx: int = st.session_state.get(_k("step_idx"), 0)
+        step_idx = max(0, min(step_idx, n_steps - 1))
+        st.session_state[_k("step_idx")] = step_idx
+        playing:  bool = st.session_state.get(_k("playing"), False)
 
-    with st.container(border=True):
-        speed = st.select_slider(
-            "Playback speed",
-            options=["0.5×", "1×", "2×", "4×"],
-            value="1×",
-            label_visibility="collapsed",
-            key=_k("speed"),
-        )
-        DELAY = {"0.5×": 1.8, "1×": 0.9, "2×": 0.45, "4×": 0.22}[speed]
+        with st.container(border=True):
+            speed = st.select_slider(
+                "Playback speed",
+                options=["0.5×", "1×", "2×", "4×"],
+                value="1×",
+                label_visibility="collapsed",
+                key=_k("speed"),
+            )
+            DELAY = {"0.5×": 1.8, "1×": 0.9, "2×": 0.45, "4×": 0.22}[speed]
 
-        col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
+            col_prev, col_play, col_pause, col_next, col_speed = st.columns([1, 1.2, 1.2, 1, 3])
 
-        with col_prev:
-            if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
-                st.session_state[_k("step_idx")] = max(0, step_idx - 1)
-                st.rerun()
+            with col_prev:
+                if st.button("◀ Prev", use_container_width=True, disabled=(step_idx == 0 or playing), key=_k("prev")):
+                    st.session_state[_k("step_idx")] = max(0, step_idx - 1)
+                    st.rerun(scope="fragment")
 
-        with col_play:
-            if st.button("▶  Play", use_container_width=True,
-                         disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
-                st.session_state[_k("playing")] = True
-                st.rerun()
+            with col_play:
+                if st.button("▶  Play", use_container_width=True,
+                             disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
+                    st.session_state[_k("playing")] = True
+                    st.rerun(scope="fragment")
 
-        with col_pause:
-            if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
-                st.session_state[_k("playing")] = False
-                st.rerun()
+            with col_pause:
+                if st.button("⏸  Pause", use_container_width=True, disabled=not playing, key=_k("pause")):
+                    st.session_state[_k("playing")] = False
+                    st.rerun(scope="fragment")
 
-        with col_next:
-            if st.button("Next ▶", use_container_width=True,
-                         disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
-                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-                st.rerun()
+            with col_next:
+                if st.button("Next ▶", use_container_width=True,
+                             disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
+                    st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                    st.rerun(scope="fragment")
 
-        with col_speed:
-            st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
+            with col_speed:
+                st.caption(f"Speed: **{speed}**  ({DELAY:.2f}s per frame)")
 
-        # Progress bar
-        st.progress(step_idx / max(n_steps - 1, 1),
-                    text=f"Frame {step_idx + 1} / {n_steps} — {snapshots[step_idx].title}")
+            # Progress bar
+            st.progress(step_idx / max(n_steps - 1, 1),
+                        text=f"Frame {step_idx + 1} / {n_steps} — {snapshots[step_idx].title}")
 
-    # -------------------------------------------------------------------
-    # Chart — always a static figure; auto-play advances step_idx via rerun
-    # -------------------------------------------------------------------
-    snap  = snapshots[step_idx]
-    max_c = max(s.n_clusters for s in snapshots) or 1
-    fig   = make_static_figure(snap, max_clusters=max_c)
-    with st.container(border=True):
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart"))
+        snap  = snapshots[step_idx]
+        max_c = max(s.n_clusters for s in snapshots) or 1
+        fig   = make_static_figure(snap, max_clusters=max_c)
+        with st.container(border=True):
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart"))
 
-    # -------------------------------------------------------------------
-    # Step explanation
-    # -------------------------------------------------------------------
-    if snap.phase == "init":
-        st.info(
-            "**Initialisation** — all points are unvisited (light grey). "
-            "DBSCAN scans through them in array order, examining each unvisited point."
-        )
-    elif snap.phase == "examine":
-        n_nbr = len(snap.neighbors) if snap.neighbors is not None else 0
-        is_core = n_nbr >= min_samples
-        verdict = (
-            f"**{n_nbr} neighbours ≥ minPts ({min_samples})** → **core point** ★. "
-            f"A new cluster (cluster {snap.cluster_id + 1}) will grow from here via BFS."
-            if is_core else
-            f"**{n_nbr} neighbours < minPts ({min_samples})** → not a core point. "
-            "Tentatively marked noise unless absorbed by a growing cluster."
-        )
-        st.info(
-            f"**Examine** — the dashed ε-circle (radius {eps}) is drawn around the seed point. "
-            f"{verdict}"
-        )
-    elif snap.phase == "expand":
-        size = int((snap.labels == snap.cluster_id).sum())
-        st.info(
-            f"**Expand** — BFS complete for cluster {snap.cluster_id + 1}. "
-            f"**{size} points** absorbed: filled = **core**, open ring = **border**."
-        )
-    else:
-        st.success(
-            f"**Done** — {snap.n_clusters} cluster{'s' if snap.n_clusters != 1 else ''}, "
-            f"{snap.n_noise} noise point{'s' if snap.n_noise != 1 else ''} (grey ✕). "
-            "Adjust ε or minPts in the sidebar to explore different results."
-        )
+        if snap.phase == "init":
+            st.info(
+                "**Initialisation** — all points are unvisited (light grey). "
+                "DBSCAN scans through them in array order, examining each unvisited point."
+            )
+        elif snap.phase == "examine":
+            n_nbr = len(snap.neighbors) if snap.neighbors is not None else 0
+            is_core = n_nbr >= min_samples
+            verdict = (
+                f"**{n_nbr} neighbours ≥ minPts ({min_samples})** → **core point** ★. "
+                f"A new cluster (cluster {snap.cluster_id + 1}) will grow from here via BFS."
+                if is_core else
+                f"**{n_nbr} neighbours < minPts ({min_samples})** → not a core point. "
+                "Tentatively marked noise unless absorbed by a growing cluster."
+            )
+            st.info(
+                f"**Examine** — the dashed ε-circle (radius {eps}) is drawn around the seed point. "
+                f"{verdict}"
+            )
+        elif snap.phase == "expand":
+            size = int((snap.labels == snap.cluster_id).sum())
+            st.info(
+                f"**Expand** — BFS complete for cluster {snap.cluster_id + 1}. "
+                f"**{size} points** absorbed: filled = **core**, open ring = **border**."
+            )
+        else:
+            st.success(
+                f"**Done** — {snap.n_clusters} cluster{'s' if snap.n_clusters != 1 else ''}, "
+                f"{snap.n_noise} noise point{'s' if snap.n_noise != 1 else ''} (grey ✕). "
+                "Adjust ε or minPts in the sidebar to explore different results."
+            )
 
-    with st.expander("📖 Reading the chart"):
-        st.markdown("""
+        with st.expander("📖 Reading the chart"):
+            st.markdown("""
 - **ε-circle** (dashed ring) — the neighbourhood radius around the current seed point
 - **Filled circles** — core points (≥ minPts neighbours within ε)
 - **Open rings** — border points (within ε of a core, but not dense enough to be one)
@@ -225,14 +227,14 @@ with col_main:
 - Colours are consistent per cluster across all frames
 """)
 
-    # -------------------------------------------------------------------
-    # Auto-advance (must be last — triggers rerun after a delay)
-    # -------------------------------------------------------------------
-    if playing:
-        if step_idx < n_steps - 1:
-            time.sleep(DELAY)
-            st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-            st.rerun()
-        else:
-            st.session_state[_k("playing")] = False
-            st.rerun()
+        # Auto-advance (must be last — triggers a fragment-scoped rerun after a delay)
+        if playing:
+            if step_idx < n_steps - 1:
+                time.sleep(DELAY)
+                st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                st.rerun(scope="fragment")
+            else:
+                st.session_state[_k("playing")] = False
+                st.rerun(scope="fragment")
+
+    _playback()

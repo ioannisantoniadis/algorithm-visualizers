@@ -216,33 +216,45 @@ with col_main:
         ],
     )
 
-    with st.container(border=True):
-        _render_pipeline_rail(snap.phase)
-
-    left, right = st.columns([1.05, 1.45], gap="medium")
-
-    with left:
+    # -------------------------------------------------------------------
+    # Pipeline rail, frame details, playback controls, chart, and
+    # auto-advance all live inside one fragment: st.rerun() during
+    # autoplay used to fully rerun the whole page (title/caption/params
+    # rail/about-section included) several times a second, and small
+    # timing differences in how long each of those took to re-render
+    # showed up as visible flicker/layout shift on every frame. Scoping
+    # the rerun to just this fragment keeps everything above it (and the
+    # sidebar) completely static.
+    # -------------------------------------------------------------------
+    @st.fragment
+    def _playback() -> None:
         with st.container(border=True):
-            st.markdown("### This frame")
-            step_no = {"knn": 1, "fuzzy": 2, "embed": 3}[snap.phase]
-            st.caption(
-                f"Pipeline step **{step_no}/3** — highlighted above. "
-                f"Phase **{snap.phase}**; animation frame **{step_idx + 1}/{n_steps}**."
-            )
-            m1, m2 = st.columns(2)
-            m1.metric("Phase", snap.phase)
-            if snap.phase == "embed":
-                m2.metric("SGD epoch", str(snap.step))
-            st.metric("Layout (a, b)", f"{snap.a_param:.3f}, {snap.b_param:.3f}")
-            st.markdown("Low-dimensional pairwise kernel ")
-            st.latex(r"q_{ij} = 1/\bigl(1 + a \,\lVert y_i - y_j \rVert^{2b}\bigr)")
-            st.caption("(a, b) fitted to match min_dist & spread — same convention as umap-learn.")
-            st.markdown("**High-D preview** — variance along first two PCs of **X**:")
-            xv = X - X.mean(0, keepdims=True)
-            _, s, _ = np.linalg.svd(xv, full_matrices=False)
-            st.code(f"Top singular values (relative): {s[0]:.3f}, {s[1]:.3f}, …", language=None)
-            with st.expander("Algorithm stages"):
-                st.markdown("""
+            _render_pipeline_rail(snap.phase)
+
+        left, right = st.columns([1.05, 1.45], gap="medium")
+
+        with left:
+            with st.container(border=True):
+                st.markdown("### This frame")
+                step_no = {"knn": 1, "fuzzy": 2, "embed": 3}[snap.phase]
+                st.caption(
+                    f"Pipeline step **{step_no}/3** — highlighted above. "
+                    f"Phase **{snap.phase}**; animation frame **{step_idx + 1}/{n_steps}**."
+                )
+                m1, m2 = st.columns(2)
+                m1.metric("Phase", snap.phase)
+                if snap.phase == "embed":
+                    m2.metric("SGD epoch", str(snap.step))
+                st.metric("Layout (a, b)", f"{snap.a_param:.3f}, {snap.b_param:.3f}")
+                st.markdown("Low-dimensional pairwise kernel ")
+                st.latex(r"q_{ij} = 1/\bigl(1 + a \,\lVert y_i - y_j \rVert^{2b}\bigr)")
+                st.caption("(a, b) fitted to match min_dist & spread — same convention as umap-learn.")
+                st.markdown("**High-D preview** — variance along first two PCs of **X**:")
+                xv = X - X.mean(0, keepdims=True)
+                _, s, _ = np.linalg.svd(xv, full_matrices=False)
+                st.code(f"Top singular values (relative): {s[0]:.3f}, {s[1]:.3f}, …", language=None)
+                with st.expander("Algorithm stages"):
+                    st.markdown("""
 1. **k-NN** in ℝᴰ → local distances
 2. **smooth_knn** normalisation → σᵢ, ρᵢ (local connectivity)
 3. **Membership strengths** → directed fuzzy 1-simplices
@@ -250,46 +262,49 @@ with col_main:
 5. **SGD** minimises cross-entropy between high-D and low-D fuzzy sets
 """)
 
-    with right:
-        with st.container(border=True):
-            speed = st.select_slider("Speed", ["0.5×", "1×", "2×"], "1×", label_visibility="collapsed", key=_k("speed"))
-            delay = {"0.5×": 0.95, "1×": 0.48, "2×": 0.24}[speed]
-            c1, c2, c3, c4 = st.columns([1, 1.1, 1.1, 1])
-            with c1:
-                if st.button("◀", disabled=(step_idx == 0 or playing), key=_k("prev")):
-                    st.session_state[_k("step_idx")] = max(0, step_idx - 1)
-                    st.rerun()
-            with c2:
-                if st.button("▶ Play", disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
-                    st.session_state[_k("playing")] = True
-                    st.rerun()
-            with c3:
-                if st.button("⏸", disabled=not playing, key=_k("pause")):
-                    st.session_state[_k("playing")] = False
-                    st.rerun()
-            with c4:
-                if st.button("Next ▶", disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
-                    st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-                    st.rerun()
+        with right:
+            with st.container(border=True):
+                speed = st.select_slider("Speed", ["0.5×", "1×", "2×"], "1×", label_visibility="collapsed", key=_k("speed"))
+                delay = {"0.5×": 0.95, "1×": 0.48, "2×": 0.24}[speed]
+                c1, c2, c3, c4 = st.columns([1, 1.1, 1.1, 1])
+                with c1:
+                    if st.button("◀", disabled=(step_idx == 0 or playing), key=_k("prev")):
+                        st.session_state[_k("step_idx")] = max(0, step_idx - 1)
+                        st.rerun(scope="fragment")
+                with c2:
+                    if st.button("▶ Play", disabled=(playing or step_idx == n_steps - 1), type="primary", key=_k("play")):
+                        st.session_state[_k("playing")] = True
+                        st.rerun(scope="fragment")
+                with c3:
+                    if st.button("⏸", disabled=not playing, key=_k("pause")):
+                        st.session_state[_k("playing")] = False
+                        st.rerun(scope="fragment")
+                with c4:
+                    if st.button("Next ▶", disabled=(step_idx == n_steps - 1 or playing), key=_k("next")):
+                        st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+                        st.rerun(scope="fragment")
 
-            st.progress(step_idx / max(n_steps - 1, 1), text=f"Frame {step_idx + 1}/{n_steps}")
+                st.progress(step_idx / max(n_steps - 1, 1), text=f"Frame {step_idx + 1}/{n_steps}")
 
-            st.info(_frame_panels_explainer(snap, ds_key))
+                st.info(_frame_panels_explainer(snap, ds_key))
 
-        with st.container(border=True):
-            fig = make_figure(snap, frame_index=step_idx, frame_total=n_steps)
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart"))
-            st.caption("**A / B** in the plot titles match the explainer above.")
+            with st.container(border=True):
+                fig = make_figure(snap, frame_index=step_idx, frame_total=n_steps)
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=_k("chart"))
+                st.caption("**A / B** in the plot titles match the explainer above.")
 
-    if snap.phase == "embed":
-        st.caption(
-            "Note: this is a **readable** SGD loop, not a drop-in for **umap-learn**; global topology should still line up with the reference."
-        )
+        if snap.phase == "embed":
+            st.caption(
+                "Note: this is a **readable** SGD loop, not a drop-in for **umap-learn**; global topology should still line up with the reference."
+            )
 
-    if playing and step_idx < n_steps - 1:
-        time.sleep(delay)
-        st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
-        st.rerun()
-    elif playing:
-        st.session_state[_k("playing")] = False
-        st.rerun()
+        # Auto-advance (must be last — triggers a fragment-scoped rerun after a delay)
+        if playing and step_idx < n_steps - 1:
+            time.sleep(delay)
+            st.session_state[_k("step_idx")] = min(n_steps - 1, step_idx + 1)
+            st.rerun(scope="fragment")
+        elif playing:
+            st.session_state[_k("playing")] = False
+            st.rerun(scope="fragment")
+
+    _playback()
