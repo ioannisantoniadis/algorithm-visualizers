@@ -112,25 +112,45 @@ def _home_page() -> None:
         opacity: 0;
     }
 
-    /* ---- Hero ---- */
+    /* ---- Hero ----
+       font-size needs !important on both rules below — see the longer
+       explanation next to .rail-title in common/ui.py's global_css():
+       Streamlit's own per-instance ".st-emotion-cache-XXXX p { font-size:
+       inherit }" rule outranks a plain class selector on a <p>, so
+       without !important these silently render at the inherited 16px
+       body size instead of the eyebrow/meta sizes set here. */
     .hero-eyebrow {
-        color: #6366f1; font-weight: 600; font-size: 0.8rem;
+        color: #6366f1; font-weight: 600; font-size: 0.8rem !important;
         letter-spacing: 0.08em; margin-bottom: 0.4rem;
     }
     .hero-meta {
-        font-size: 0.85rem; color: #71717a; margin: 0.9rem 0 1.5rem 0;
+        font-size: 0.875rem !important; color: #71717a; margin: 0.9rem 0 1.5rem 0;
     }
 
-    /* ---- Category section headers ---- */
+    /* ---- Category section headers ----
+       Deliberately bigger than .card-title below: a category ("Clustering")
+       is one level up the hierarchy from the algorithms inside it, and
+       should read that way. Was previously smaller than the card h4s it
+       contains (1.35rem vs. h4's default ~1.5rem) — a real hierarchy
+       inversion, not just a stylistic choice. */
     .category-header {
         display: flex; align-items: center; gap: 0.6rem;
         margin: 2.25rem 0 1rem 0;
     }
     .category-accent-bar {
-        width: 4px; height: 1.35rem; border-radius: 999px;
+        width: 4px; height: 1.5rem; border-radius: 999px;
     }
     .category-title {
-        font-size: 1.35rem; font-weight: 700; color: #18181b;
+        font-size: 1.6rem; font-weight: 700; color: #18181b;
+    }
+
+    /* ---- Algorithm card title — a plain div (not markdown's h4) so its
+       size is set explicitly here rather than inherited from Streamlit's
+       default heading scale, keeping it clearly subordinate to
+       .category-title above. ---- */
+    .card-title {
+        font-size: 1.15rem; font-weight: 700; color: #18181b;
+        margin: 0 0 0.3rem 0;
     }
 
     /* ---- Persistent "Open" affordance on every card (not hover-only) ---- */
@@ -171,7 +191,7 @@ def _home_page() -> None:
             page = PAGES_BY_PATH[path]
             with cols[i % 3]:
                 with st.container(border=True):
-                    st.markdown(f"#### {title}")
+                    st.markdown(f'<div class="card-title">{title}</div>', unsafe_allow_html=True)
                     st.caption(blurb)
                     st.page_link(page, label="Open visualiser")
                     st.markdown(

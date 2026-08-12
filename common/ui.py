@@ -112,11 +112,19 @@ def global_css() -> str:
 }}
 
 /* ---- Params rail: the bordered "Configuration" card every algorithm
-   page renders in its narrow main-content column via params_rail() ---- */
+   page renders in its narrow main-content column via params_rail() ----
+   font-size needs !important: Streamlit ships a rule scoped to each
+   stMarkdown instance's own emotion-cache class targeting p/ol/ul/dl/li
+   with font-size: inherit, at specificity (0,1,1), which beats a plain
+   ".rail-title" class selector's (0,1,0) and silently wins, falling back
+   to the
+   inherited 16px body size no matter what font-size is set here. Any
+   future custom class applied to a bare <p> (not a <span> or <div>) needs
+   the same !important, or it will render at 16px regardless of this rule. */
 .rail-title {{
     color: #52525b;
     font-weight: 700;
-    font-size: 0.72rem;
+    font-size: 0.72rem !important;
     letter-spacing: 0.06em;
     text-transform: uppercase;
     margin: 0 0 {SPACE_XS} 2px;
@@ -146,6 +154,25 @@ def global_css() -> str:
 .ui-badge-value {{
     color: #18181b;
     font-weight: 700;
+}}
+
+/* ---- st.metric: Streamlit's own value element wraps its text in an
+   inner div hard-set to white-space:nowrap + text-overflow:ellipsis —
+   built for short numbers, and it silently truncates ("Backward" ->
+   "Backwa…") for anything longer, with no wrap fallback. This app's
+   metric rows sit in a column that's already narrower than a full-width
+   page (the params rail takes the first third), which makes any
+   multi-word phase name or combined "a / b" value a truncation risk.
+   Shrinking the value font and forcing wrap instead of ellipsis fixes it
+   for every metric in the app, not just the ones already found. ---- */
+[data-testid="stMetricValue"] {{
+    font-size: 1.5rem !important;
+}}
+[data-testid="stMetricValue"] > div {{
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    line-height: 1.3 !important;
 }}
 </style>
 """
