@@ -117,15 +117,8 @@ def _home_page() -> None:
         color: #6366f1; font-weight: 600; font-size: 0.8rem;
         letter-spacing: 0.08em; margin-bottom: 0.4rem;
     }
-    .hero-stats {
-        display: flex; gap: 2rem; margin: 1.25rem 0 1.75rem 0;
-        flex-wrap: wrap;
-    }
-    .hero-stat-value {
-        font-size: 1.4rem; font-weight: 700; color: #18181b; line-height: 1.1;
-    }
-    .hero-stat-label {
-        font-size: 0.78rem; color: #71717a; margin-top: 0.15rem;
+    .hero-meta {
+        font-size: 0.85rem; color: #71717a; margin: 0.9rem 0 1.5rem 0;
     }
 
     /* ---- Category section headers ---- */
@@ -148,21 +141,19 @@ def _home_page() -> None:
     """, unsafe_allow_html=True)
 
     st.markdown("<p class='hero-eyebrow'>ALGORITHM VISUALISER PORTFOLIO</p>", unsafe_allow_html=True)
-    st.title("20 classic algorithms, from scratch")
+    st.title("20 classic algorithms, visualized step by step")
     st.caption(
-        "Every visualiser below is a from-scratch NumPy implementation — no scikit-learn "
-        "or PyTorch in the core algorithm — paired with an interactive Streamlit + Plotly "
-        "step-by-step walkthrough. Pick a category, pick an algorithm, and step through it."
+        "Step-by-step, interactive visualizations of 20 classic algorithms — spanning "
+        "clustering, deep learning, graph search, and more. Each one is implemented "
+        "from scratch in NumPy, so what you're watching is the actual math, not a "
+        "black box."
     )
 
     n_algos = sum(len(items) for items in CATALOGUE.values())
-    st.markdown(f"""
-    <div class="hero-stats">
-        <div><div class="hero-stat-value">{n_algos}</div><div class="hero-stat-label">algorithms</div></div>
-        <div><div class="hero-stat-value">{len(CATALOGUE)}</div><div class="hero-stat-label">categories</div></div>
-        <div><div class="hero-stat-value">100%</div><div class="hero-stat-label">NumPy, no sklearn / PyTorch in the core</div></div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f"<p class='hero-meta'>{n_algos} algorithms across {len(CATALOGUE)} categories</p>",
+        unsafe_allow_html=True,
+    )
 
     st.divider()
 
