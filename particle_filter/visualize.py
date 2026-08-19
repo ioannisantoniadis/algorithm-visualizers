@@ -1,0 +1,178 @@
+"""
+visualize.py — Plotly figure builders
+
+Two public functions:
+
+  make_static_figure(snapshots, idx)
+      Non-animated figure for a single step: the ground-truth path revealed
+      so far, the noisy observations, the particle-filter estimate
+      trajectory, and the *current particle cloud* — each particle's marker
+      size and opacity scaled by its importance weight, so a collapsed
+      (post-resample) cloud and a diffuse (post-predict) cloud are visually
+      obvious at a glance.
+
+  make_comparison_figure(snapshots)
+      Full-run overlay of raw (noisy) observations vs. the particle-filter
+      estimate vs. ground truth, for the always-on "raw vs. filtered"
+      comparison panel — same shape as kalman/visualize.py's version, for a
+      direct side-by-side comparison between the two filters.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import plotly.graph_objects as go
+
+from common.theme import base_layout
+from .algorithm import Snapshot
+
+# Shared portfolio palette — kept in sync with .streamlit/config.toml's
+# theme.chartCategoricalColors so every chart matches the app chrome.
+_PALETTE = ["#6366f1", "#14b8a6", "#f59e0b", "#f43f5e", "#0ea5e9",
+            "#8b5cf6", "#84cc16", "#fb923c", "#06b6d4", "#ec4899"]
+
+_COLOR_TRUE = "#a1a1aa"
+_COLOR_OBS = _PALETTE[3]      # rose — noisy observations
+_COLOR_EST = _PALETTE[0]      # indigo — particle-filter estimate
+_COLOR_PARTICLES = _PALETTE[5]  # violet — individual particles, distinct from the estimate line
+
+
+def _history_by_step(snapshots: list[Snapshot], upto: int):
+    """Collect one true/observation/estimate point per time step, up to
+    (and including) index `upto` — mirrors kalman/visualize.py's helper so
+    the two comparison panels read identically."""
+    true_by_step: dict[int, np.ndarray] = {}
+    obs_by_step: dict[int, np.ndarray] = {}
+    est_by_step: dict[int, np.ndarray] = {}
+
+    for s in snapshots[: upto + 1]:
+        true_by_step[s.step] = s.true_pos
+        if s.observation is not None:
+            obs_by_step[s.step] = s.observation
+        if s.phase in ("init", "update"):
+            est_by_step[s.step] = s.pos_mean
+
+    true_pts = np.array([true_by_step[k] for k in sorted(true_by_step)])
+    obs_pts = np.array([obs_by_step[k] for k in sorted(obs_by_step)]) if obs_by_step else np.empty((0, 2))
+    est_pts = np.array([est_by_step[k] for k in sorted(est_by_step)]) if est_by_step else np.empty((0, 2))
+    return true_pts, obs_pts, est_pts
+
+
+def _axis_ranges(snapshots: list[Snapshot], pad: float = 2.0):
+    all_pts = np.vstack(
+        [s.true_pos for s in snapshots]
+        + [s.observation for s in snapshots if s.observation is not None]
+        + [s.particles[:, :2] for s in snapshots]
+    )
+    x_range = [float(all_pts[:, 0].min()) - pad, float(all_pts[:, 0].max()) + pad]
+    y_range = [float(all_pts[:, 1].min()) - pad, float(all_pts[:, 1].max()) + pad]
+    return x_range, y_range
+
+
+def _particle_trace(snap: Snapshot) -> go.Scatter:
+    """One marker per particle — size and opacity scaled by weight so a
+    tightly-focused cloud (post-resample) and a spread-out, unevenly
+    weighted cloud (post-predict/update) look visibly different."""
+    w = snap.weights
+    w_norm = w / w.max() if w.max() > 0 else np.zeros_like(w)
+    sizes = 3.0 + 9.0 * w_norm
+    opacities = 0.15 + 0.65 * w_norm
+    return go.Scatter(
+        x=snap.particles[:, 0],
+        y=snap.particles[:, 1],
+        mode="markers",
+        marker=dict(
+            size=sizes,
+            color=_COLOR_PARTICLES,
+            opacity=opacities,
+            line=dict(width=0),
+        ),
+        name=f"Particles (N={snap.n_particles})",
+    )
+
+
+def _make_traces(snapshots: list[Snapshot], idx: int) -> list[go.Scatter]:
+    snap = snapshots[idx]
+    true_pts, obs_pts, est_pts = _history_by_step(snapshots, idx)
+
+    traces = [
+        go.Scatter(
+            x=true_pts[:, 0], y=true_pts[:, 1],
+            mode="lines",
+            line=dict(color=_COLOR_TRUE, width=2, dash="dot"),
+            name="True trajectory",
+        ),
+        go.Scatter(
+            x=obs_pts[:, 0], y=obs_pts[:, 1],
+            mode="markers",
+            marker=dict(color=_COLOR_OBS, size=7, symbol="x"),
+            name="Noisy observations",
+        ),
+        _particle_trace(snap),
+        go.Scatter(
+            x=est_pts[:, 0], y=est_pts[:, 1],
+            mode="lines+markers",
+            line=dict(color=_COLOR_EST, width=2),
+            marker=dict(size=5, color=_COLOR_EST),
+            name="Weighted-mean estimate",
+        ),
+        go.Scatter(
+            x=[snap.pos_mean[0]], y=[snap.pos_mean[1]],
+            mode="markers",
+            marker=dict(size=13, color=_COLOR_EST, symbol="circle",
+                        line=dict(width=2, color="white")),
+            name="Current estimate",
+            showlegend=False,
+        ),
+        go.Scatter(
+            x=[snap.true_pos[0]], y=[snap.true_pos[1]],
+            mode="markers",
+            marker=dict(size=10, color=_COLOR_TRUE, symbol="circle",
+                        line=dict(width=1.5, color="white")),
+            name="Current true position",
+            showlegend=False,
+        ),
+    ]
+    return traces
+
+
+def make_static_figure(snapshots: list[Snapshot], idx: int) -> go.Figure:
+    """Return a non-animated Plotly figure for a single step, `idx`,
+    given the full snapshot history (needed to draw the trails)."""
+    x_range, y_range = _axis_ranges(snapshots)
+    traces = _make_traces(snapshots, idx)
+    layout = base_layout(
+        None,  # per-frame title — already shown in the page's progress bar
+        xaxis=dict(title="x", range=x_range),
+        yaxis=dict(title="y", range=y_range, scaleanchor="x"),
+    )
+    fig = go.Figure(data=traces, layout=layout)
+    return fig
+
+
+def make_comparison_figure(snapshots: list[Snapshot]) -> go.Figure:
+    """Full-run static overlay: ground truth vs. raw observations vs.
+    the particle-filter-smoothed estimate."""
+    true_pts, obs_pts, est_pts = _history_by_step(snapshots, len(snapshots) - 1)
+    x_range, y_range = _axis_ranges(snapshots)
+
+    traces = [
+        go.Scatter(x=true_pts[:, 0], y=true_pts[:, 1], mode="lines",
+                   line=dict(color=_COLOR_TRUE, width=2, dash="dot"), name="True trajectory"),
+        go.Scatter(x=obs_pts[:, 0], y=obs_pts[:, 1], mode="lines+markers",
+                   line=dict(color=_COLOR_OBS, width=1),
+                   marker=dict(color=_COLOR_OBS, size=5, symbol="x"),
+                   name="Raw observations"),
+        go.Scatter(x=est_pts[:, 0], y=est_pts[:, 1], mode="lines+markers",
+                   line=dict(color=_COLOR_EST, width=2.5),
+                   marker=dict(color=_COLOR_EST, size=5),
+                   name="Particle-filter estimate"),
+    ]
+    layout = base_layout(
+        "Full run — raw observations vs. particle-filter estimate",  # static caption — keep
+        height=460,
+        xaxis=dict(title="x", range=x_range),
+        yaxis=dict(title="y", range=y_range, scaleanchor="x"),
+    )
+    fig = go.Figure(data=traces, layout=layout)
+    return fig

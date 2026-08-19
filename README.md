@@ -25,7 +25,7 @@ Open the URL printed in your terminal (usually http://localhost:8501). The sideb
 | **Deep learning building blocks** | Backpropagation · Transformer Self-Attention |
 | **Generative & self-supervised models** | Variational Autoencoder · Diffusion Model (DDPM) · Contrastive Learning |
 | **Graph algorithms** | Dijkstra & A* · Minimum Spanning Tree (Kruskal & Prim) |
-| **Probabilistic methods, state estimation & signal processing** | Markov Chain Monte Carlo · Kalman Filter · Fast Fourier Transform |
+| **Probabilistic methods, state estimation & signal processing** | Markov Chain Monte Carlo · Kalman Filter · Particle Filter · Fast Fourier Transform |
 | **Reinforcement learning** | Q-Learning / SARSA |
 
 Every visualiser follows the same convention: a from-scratch NumPy implementation, a step-by-step or frame-by-frame playback control, and an in-app explanation of what's happening and why the algorithm can fail.

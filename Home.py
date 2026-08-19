@@ -54,6 +54,7 @@ CATALOGUE = {
     "Probabilistic methods, state estimation & signal processing": [
         ("apps/mcmc.py", "Markov Chain Monte Carlo", "Metropolis-Hastings sampling"),
         ("apps/kalman.py", "Kalman Filter", "Predict/update tracking"),
+        ("apps/particle_filter.py", "Particle Filter", "Predict/update/resample, weighted particle cloud"),
         ("apps/fft.py", "Fast Fourier Transform", "Cooley-Tukey, butterfly diagram"),
     ],
     "Reinforcement learning": [
