@@ -10,8 +10,8 @@ home, instead of many separate repos.
 
 - **Live**: https://algorithm-visualizers.streamlit.app/ (Streamlit Community
   Cloud, auto-deploys on push to `main`)
-- **Owner's GitHub profile links here**: `johnantonn/johnantonn` README, under
-  "Selected GitHub repositories"
+- **Owner's GitHub profile links here**: `ioannisantoniadis/ioannisantoniadis`
+  README, under "Selected GitHub repositories"
 
 > **Known stale copy** (not yet fixed — cheap to fix, just hasn't been
 > touched): `Home.py`'s hero `st.title(...)` and the `st.caption(...)` right
