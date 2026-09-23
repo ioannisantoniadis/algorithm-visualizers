@@ -64,9 +64,10 @@ def main() -> None:
     fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
 
     # Header.
+    n_algos = sum(len(algos) for _, algos in CATALOGUE.values())
     ax.text(0.4, 0.62, "Algorithm Visualisers", fontsize=25, fontweight="bold",
              color=INK, ha="left", va="top")
-    ax.text(0.4, 1.28, "20 classic ML & CS algorithms, implemented from scratch "
+    ax.text(0.4, 1.28, f"{n_algos} classic ML & CS algorithms, implemented from scratch "
                         "in NumPy and visualized step by step",
             fontsize=12.5, color=INK_SOFT, ha="left", va="top")
 

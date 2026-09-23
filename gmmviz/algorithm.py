@@ -27,7 +27,15 @@ def _log_gaussian_pdf(X: np.ndarray, mean: np.ndarray, cov: np.ndarray) -> np.nd
     xc = X - mean
     sign, logdet = np.linalg.slogdet(cov)
     if sign <= 0:
-        logdet = -1e6
+        # Degenerate/non-PD covariance: force this component's density toward
+        # zero (very negative log-density), not toward infinity. Since
+        # log N(x) = -0.5*(d*log(2*pi) + logdet + quad), a large positive
+        # sentinel here makes the bracket large and positive, so the -0.5
+        # factor makes the log-density very negative — the correct direction.
+        # (A large *negative* sentinel, as previously used, did the opposite:
+        # it made this invalid component's log-density enormous and positive,
+        # letting it wrongly dominate the E-step responsibilities.)
+        logdet = 1e6
     cov_inv = np.linalg.inv(cov)
     quad = np.sum(xc @ cov_inv * xc, axis=1)
     return -0.5 * (d * np.log(2 * np.pi) + logdet + quad)

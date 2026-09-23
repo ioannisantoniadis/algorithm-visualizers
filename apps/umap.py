@@ -249,7 +249,7 @@ with col_main:
                 st.markdown("Low-dimensional pairwise kernel ")
                 st.latex(r"q_{ij} = 1/\bigl(1 + a \,\lVert y_i - y_j \rVert^{2b}\bigr)")
                 st.caption("(a, b) fitted to match min_dist & spread — same convention as umap-learn.")
-                st.markdown("**High-D preview** — variance along first two PCs of **X**:")
+                st.markdown("**High-D preview** — top singular values of centered **X**:")
                 xv = X - X.mean(0, keepdims=True)
                 _, s, _ = np.linalg.svd(xv, full_matrices=False)
                 st.code(f"Top singular values (relative): {s[0]:.3f}, {s[1]:.3f}, …", language=None)

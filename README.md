@@ -1,8 +1,8 @@
 # Algorithm Visualisers
 
-![Algorithm Visualisers — 20 classic ML & CS algorithms grouped by category](docs/social-preview.png)
+![Algorithm Visualisers — 21 classic ML & CS algorithms grouped by category](docs/social-preview.png)
 
-20 classic machine-learning and CS algorithms, each implemented **from scratch in NumPy** (no scikit-learn, no PyTorch in the core algorithm) and paired with an interactive **Streamlit + Plotly** step-by-step walkthrough — all in one categorized multipage app.
+21 classic machine-learning and CS algorithms, each implemented **from scratch in NumPy** (no scikit-learn, no PyTorch in the core algorithm) and paired with an interactive **Streamlit + Plotly** step-by-step walkthrough — all in one categorized multipage app.
 
 **Live demo: [algorithm-visualizers.streamlit.app](https://algorithm-visualizers.streamlit.app/)**
 

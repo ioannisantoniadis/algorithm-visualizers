@@ -34,7 +34,7 @@ CATALOGUE = {
         ("apps/tsne.py", "t-SNE", "KL-divergence descent on affinities"),
     ],
     "Classification & ensembles": [
-        ("apps/perceptron.py", "Perceptron & Gradient Descent", "SGD / momentum / Adam optimisers"),
+        ("apps/perceptron.py", "Perceptron & Gradient Descent", "Vanilla GD / momentum / Adam optimisers"),
         ("apps/svm.py", "Support Vector Machine", "Soft-margin kernel SVM via SMO"),
         ("apps/random_forest.py", "Random Forest", "Bagging, feature subsampling, OOB error"),
     ],
@@ -161,16 +161,17 @@ def _home_page() -> None:
     </style>
     """, unsafe_allow_html=True)
 
+    n_algos = sum(len(items) for items in CATALOGUE.values())
+
     st.markdown("<p class='hero-eyebrow'>ALGORITHM VISUALISER PORTFOLIO</p>", unsafe_allow_html=True)
-    st.title("20 classic algorithms, visualized step by step")
+    st.title(f"{n_algos} classic algorithms, visualized step by step")
     st.caption(
-        "Step-by-step, interactive visualizations of 20 classic algorithms — spanning "
+        f"Step-by-step, interactive visualizations of {n_algos} classic algorithms — spanning "
         "clustering, deep learning, graph search, and more. Each one is implemented "
         "from scratch in NumPy, so what you're watching is the actual math, not a "
         "black box."
     )
 
-    n_algos = sum(len(items) for items in CATALOGUE.values())
     st.markdown(
         f"<p class='hero-meta'>{n_algos} algorithms across {len(CATALOGUE)} categories</p>",
         unsafe_allow_html=True,

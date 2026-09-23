@@ -245,15 +245,23 @@ def prim(positions: np.ndarray, edges: list[Edge], start: int = 0, frontier_limi
     total = 0.0
 
     def preview() -> list[Edge]:
-        """Best few live (non-stale, non-tree-internal) crossing edges."""
-        seen: set[int] = set()
-        live: list[Edge] = []
+        """Best few live (non-stale, non-tree-internal) crossing edges.
+
+        `heap` is only *heap-ordered* (heap[0] is the global min; nothing
+        guarantees element i comes before element j for i < j otherwise), and
+        it can contain several stale entries to the same outside node `v`
+        left over from earlier pushes. Deduping by "first entry seen in the
+        raw array" would silently keep whichever stale (possibly larger)
+        weight happens to appear first, rather than the true cheapest edge to
+        `v` — so track the minimum weight per node explicitly instead.
+        """
+        best: dict[int, Edge] = {}
         for w, u, v in heap:
-            if v in seen or in_tree[v]:
+            if in_tree[v]:
                 continue
-            seen.add(v)
-            live.append(Edge(u, v, w))
-        live.sort(key=lambda e: e.w)
+            if v not in best or w < best[v].w:
+                best[v] = Edge(u, v, w)
+        live = sorted(best.values(), key=lambda e: e.w)
         return live[:frontier_limit]
 
     snapshots: list[Snapshot] = [

@@ -109,9 +109,11 @@ def env_step(
 
     Returns (next_state, reward, done, actual_action). Landing on a
     "respawn" cell (the cliff) applies its reward but snaps the agent
-    back to start without ending the episode.
+    back to start without ending the episode. If `grid.deterministic` is
+    set (Cliff Walking), the intended action always succeeds — see the
+    field's docstring in data.py for why this preset needs that.
     """
-    actual_action = _slip(action, rng)
+    actual_action = action if grid.deterministic else _slip(action, rng)
     next_state = _move(state, actual_action, grid.rows, grid.cols)
     reward = float(grid.reward[next_state])
     done = bool(grid.terminal[next_state])

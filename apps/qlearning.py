@@ -118,7 +118,7 @@ with col_params:
                  "costs −1, falling off the cliff costs −100 and resets you to "
                  "start. Watch **Q-learning** converge to the risky optimal path "
                  "hugging the cliff edge, while **SARSA** learns a safer route "
-                 "one row back — enable the comparison below to see both at once.",
+                 "further from the edge — enable the comparison below to see both at once.",
         "random_hazards": "**Random hazards** — a fresh scattered layout of "
                    "resources and hazards per seed. Change the seed and press "
                    "**Regenerate & retrain** for a brand-new layout to learn.",
@@ -243,7 +243,7 @@ with col_main:
     # -------------------------------------------------------------------
     @st.fragment
     def _playback() -> None:
-        step_idx: int = min(st.session_state.get(_k("step_idx"), 0), n_steps - 1)
+        step_idx: int = max(0, min(st.session_state.get(_k("step_idx"), 0), n_steps - 1))
         playing: bool = st.session_state.get(_k("playing"), False)
 
         with st.container(border=True):

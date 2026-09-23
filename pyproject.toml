@@ -1,7 +1,7 @@
 [project]
 name = "algorithm-visualizers"
 version = "0.1.0"
-description = "From-scratch NumPy implementations of 20 classic ML/algorithms, each with an interactive Streamlit + Plotly step-by-step visualiser."
+description = "From-scratch NumPy implementations of 21 classic ML/algorithms, each with an interactive Streamlit + Plotly step-by-step visualiser."
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.26",

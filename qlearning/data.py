@@ -61,13 +61,25 @@ class GridWorld:
     rows: int
     cols: int
     name: str
+    # False (default) = grid-world-mdp's 80/10/10 slip model. True = actions
+    # always succeed as intended. Cliff Walking (Example 6.6 in Sutton &
+    # Barto) is defined with deterministic transitions — the "Q-learning
+    # hugs the edge, SARSA backs off a row" result is specifically a
+    # consequence of on-/off-policy TD targets differing under *exploration*
+    # noise (epsilon-greedy), not environment noise. Adding slip on top
+    # makes stepping near the cliff risky regardless of which policy is
+    # being followed, which changes the Bellman-optimal policy itself and
+    # erases the effect this preset exists to demonstrate.
+    deterministic: bool = False
 
 
 def _empty_kind_grid(rows: int, cols: int) -> np.ndarray:
     return np.full((rows, cols), "empty", dtype=object)
 
 
-def _finalize(kind: np.ndarray, start: Cell, step_reward: float, name: str) -> GridWorld:
+def _finalize(
+    kind: np.ndarray, start: Cell, step_reward: float, name: str, *, deterministic: bool = False
+) -> GridWorld:
     rows, cols = kind.shape
     kind = kind.copy()
     kind[start] = "start"
@@ -86,6 +98,7 @@ def _finalize(kind: np.ndarray, start: Cell, step_reward: float, name: str) -> G
     return GridWorld(
         kind=kind, reward=reward, terminal=terminal, respawn=respawn,
         start=start, step_reward=step_reward, rows=rows, cols=cols, name=name,
+        deterministic=deterministic,
     )
 
 
@@ -111,16 +124,17 @@ def make_cliff(rows: int = 4, cols: int = 12) -> GridWorld:
     stepping off the cliff costs -100 and resets to start (episode keeps
     going). This is the textbook example where Q-learning (off-policy)
     converges to the optimal path hugging the cliff edge, while SARSA
-    (on-policy) learns a safer route one row up — because SARSA's target
-    uses the action epsilon-greedy exploration will *actually* take next,
-    which occasionally steps off the edge during training."""
+    (on-policy) learns a safer route further from the edge — because
+    SARSA's target uses the action epsilon-greedy exploration will
+    *actually* take next, which occasionally steps off the edge during
+    training."""
     rows = max(rows, 3)
     cols = max(cols, 4)
     kind = _empty_kind_grid(rows, cols)
     kind[rows - 1, 1:cols - 1] = "cliff"
     start = (rows - 1, 0)
     kind[rows - 1, cols - 1] = "goal"
-    return _finalize(kind, start, step_reward=-1.0, name="Cliff walk")
+    return _finalize(kind, start, step_reward=-1.0, name="Cliff walk", deterministic=True)
 
 
 def _bfs_reachable(terminal_ok: np.ndarray, start: Cell, blocked: np.ndarray) -> bool:

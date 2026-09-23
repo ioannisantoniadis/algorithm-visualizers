@@ -184,6 +184,13 @@ def fit(
                 particles=particles.copy(),
                 weights=weights.copy(),
                 true_pos=true_positions[k],
+                # Predict never touches weights, so ESS is unchanged from the
+                # previous snapshot — but it must still be *computed* here
+                # rather than left at the dataclass default of 0.0, or the
+                # page's "Effective sample size" metric would misleadingly
+                # show 0 on every predict frame (implying total collapse)
+                # right before snapping back up on the next update.
+                ess=float(1.0 / np.sum(weights ** 2)),
             )
         )
 

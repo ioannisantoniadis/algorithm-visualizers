@@ -260,7 +260,7 @@ with col_main:
 - **Top-right** — the trace plot. Flat stretches mean rejected proposals; a slowly wandering
   line (rather than a jittery one) is the visual signature of *poor mixing*.
 - **Bottom-left** — the growing histogram of visited x-coordinates against the true marginal
-  density (green). Watch it converge as the chain runs longer.
+  density (teal). Watch it converge as the chain runs longer.
 - **Bottom-right** — autocorrelation of the x-coordinate. Fast decay to ~0 means samples
   become independent quickly; slow decay means you need many more steps for the same
   effective sample size.
