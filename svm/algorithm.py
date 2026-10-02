@@ -199,9 +199,51 @@ def fit(
         )
     ]
 
-    no_change_streak = 0
+    def try_pair(i: int, j: int, E_i: float) -> bool:
+        """One SMO step on (alpha_i, alpha_j); returns True if it made progress."""
+        nonlocal b
+        f_j = float((alpha * y) @ K[:, j] + b)
+        E_j = f_j - y[j]
+
+        alpha_i_old, alpha_j_old = alpha[i], alpha[j]
+        if y[i] != y[j]:
+            lo = max(0.0, alpha[j] - alpha[i])
+            hi = min(C, C + alpha[j] - alpha[i])
+        else:
+            lo = max(0.0, alpha[i] + alpha[j] - C)
+            hi = min(C, alpha[i] + alpha[j])
+        if lo >= hi:
+            return False
+
+        eta = 2 * K[i, j] - K[i, i] - K[j, j]
+        if eta >= 0:
+            return False  # non-convex direction — skip this pair
+
+        alpha_j_new = alpha[j] - y[j] * (E_i - E_j) / eta
+        alpha_j_new = min(max(alpha_j_new, lo), hi)
+        if abs(alpha_j_new - alpha_j_old) < 1e-7:
+            return False
+
+        alpha_i_new = alpha[i] + y[i] * y[j] * (alpha_j_old - alpha_j_new)
+
+        b1 = b - E_i - y[i] * (alpha_i_new - alpha_i_old) * K[i, i] \
+               - y[j] * (alpha_j_new - alpha_j_old) * K[i, j]
+        b2 = b - E_j - y[i] * (alpha_i_new - alpha_i_old) * K[i, j] \
+               - y[j] * (alpha_j_new - alpha_j_old) * K[j, j]
+        if 0 < alpha_i_new < C:
+            b = b1
+        elif 0 < alpha_j_new < C:
+            b = b2
+        else:
+            b = (b1 + b2) / 2
+
+        alpha[i], alpha[j] = alpha_i_new, alpha_j_new
+        return True
+
+    converged = False
     for epoch in range(1, max_epochs + 1):
         n_changed = 0
+        n_violators = 0
         active_pair: tuple[int, int] | None = None
         order = rng.permutation(n)
 
@@ -214,52 +256,28 @@ def fit(
                        (y[i] * E_i > tol and alpha[i] > 0)
             if not violates:
                 continue
+            n_violators += 1
 
-            # Pick a second index at random (Platt's simplified heuristic)
-            j = int(rng.integers(0, n - 1))
-            if j >= i:
-                j += 1
-            f_j = float((alpha * y) @ K[:, j] + b)
-            E_j = f_j - y[j]
+            # Second index: a random partner first (Platt's simplified heuristic). If that
+            # pair cannot move (box-clipped, flat direction, or a negligible step), try the
+            # other partners in random order before giving up on alpha_i, so a sweep only
+            # ends with violators left when no pair involving them can make progress.
+            j0 = int(rng.integers(0, n - 1))
+            if j0 >= i:
+                j0 += 1
+            candidates = [j0] + [int(j) for j in rng.permutation(n) if j != i and j != j0]
+            for j in candidates:
+                if try_pair(int(i), j, E_i):
+                    n_changed += 1
+                    active_pair = (int(i), j)
+                    break
 
-            alpha_i_old, alpha_j_old = alpha[i], alpha[j]
-            if y[i] != y[j]:
-                lo = max(0.0, alpha[j] - alpha[i])
-                hi = min(C, C + alpha[j] - alpha[i])
-            else:
-                lo = max(0.0, alpha[i] + alpha[j] - C)
-                hi = min(C, alpha[i] + alpha[j])
-            if lo >= hi:
-                continue
-
-            eta = 2 * K[i, j] - K[i, i] - K[j, j]
-            if eta >= 0:
-                continue  # non-convex direction — skip this pair
-
-            alpha_j_new = alpha[j] - y[j] * (E_i - E_j) / eta
-            alpha_j_new = min(max(alpha_j_new, lo), hi)
-            if abs(alpha_j_new - alpha_j_old) < 1e-7:
-                continue
-
-            alpha_i_new = alpha[i] + y[i] * y[j] * (alpha_j_old - alpha_j_new)
-
-            b1 = b - E_i - y[i] * (alpha_i_new - alpha_i_old) * K[i, i] \
-                   - y[j] * (alpha_j_new - alpha_j_old) * K[i, j]
-            b2 = b - E_j - y[i] * (alpha_i_new - alpha_i_old) * K[i, j] \
-                   - y[j] * (alpha_j_new - alpha_j_old) * K[j, j]
-            if 0 < alpha_i_new < C:
-                b = b1
-            elif 0 < alpha_j_new < C:
-                b = b2
-            else:
-                b = (b1 + b2) / 2
-
-            alpha[i], alpha[j] = alpha_i_new, alpha_j_new
-            n_changed += 1
-            active_pair = (int(i), int(j))
-
-        converged = n_changed == 0
-        no_change_streak = no_change_streak + 1 if converged else 0
+        # Converged: a full sweep in which no pair could improve the dual -- either no
+        # alpha violates the KKT conditions (within tol), or every violator was tried
+        # against every partner and none could move. (Before 2026-10-02 the second index
+        # was a single random draw, so "a sweep changed nothing" could happen with the
+        # dual still well below its optimum.)
+        converged = n_violators == 0 or n_changed == 0
 
         snapshots.append(
             Snapshot(
@@ -267,11 +285,11 @@ def fit(
                 decision=_decision_function(K, alpha, y, b),
                 iteration=epoch, n_changed=n_changed, active_pair=active_pair,
                 dual_objective=_dual_objective(K, alpha, y),
-                converged=(no_change_streak >= 3),
+                converged=converged,
             )
         )
 
-        if no_change_streak >= 3:
+        if converged:
             break
 
     return snapshots

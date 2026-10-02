@@ -312,8 +312,9 @@ with col_main:
                 f"margin band shift as α changes."
             )
         else:
-            status = "**Converged** — three sweeps in a row changed nothing." if snap.converged \
-                else "No violations found this sweep, but convergence isn't confirmed yet."
+            status = ("**Converged** — no α pair can improve the dual objective any further, "
+                      "so this is the maximum-margin solution (the KKT conditions hold).") \
+                if snap.converged else "No α pair could be improved this sweep."
             st.info(f"**Sweep {snap.iteration}** — no α pairs needed updating. {status}")
 
         if step_idx == n_steps - 1 and not snap.converged:
@@ -321,7 +322,7 @@ with col_main:
                 f"**Reached the {max_epochs}-sweep cap without converging** — this is a "
                 "mid-training snapshot, not the model's settled answer. Raise **Max "
                 "iterations** in the sidebar (or lower **C**) to let SMO finish; this "
-                "simplified solver picks its second index at random rather than by the "
+                "simplified solver tries a random partner first rather than using the "
                 "maximum-violation heuristic real solvers use, so it can need many more "
                 "sweeps on large-C or heavily overlapping data."
             )

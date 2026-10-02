@@ -2,6 +2,8 @@
 implementation, a closed form, or finite differences. The visualizers are only worth
 watching if the thing being animated is the real algorithm."""
 
+import itertools
+
 import networkx as nx
 import numpy as np
 import pytest
@@ -67,7 +69,7 @@ def test_gmm_em_is_monotone_and_converges_to_an_em_fixed_point(gen):
     X, _ = getattr(GD, gen)(seed=2)
     snaps = GM.fit(X, 4, max_iter=200, random_state=0)
     lls = [s.log_likelihood for s in snaps]
-    assert all(b >= a - 1e-8 for a, b in zip(lls, lls[1:])), "EM must never decrease the log-likelihood"
+    assert all(b >= a - 1e-8 for a, b in itertools.pairwise(lls)), "EM must never decrease the log-likelihood"
     s = snaps[-1]
     # One further EM step by an independent implementation barely moves the likelihood.
     ref = GaussianMixture(4, weights_init=s.weights, means_init=s.means,
@@ -125,19 +127,22 @@ def test_kruskal_and_prim_find_the_minimum_spanning_tree(gen, seed):
 @pytest.mark.parametrize("gen,kernel", [("make_linear_separable", "linear"),
                                         ("make_linear_overlap", "linear"),
                                         ("make_moons", "rbf")])
-def test_smo_svm_agrees_with_libsvm(gen, kernel):
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_smo_svm_reaches_the_libsvm_optimum(gen, kernel, seed):
+    # Sign agreement alone cannot tell a max-margin solution from any separating one,
+    # so compare the dual objective: SMO must reach libsvm's optimum when it says it
+    # has converged.
     X, y = getattr(SD, gen)(seed=0)
     gamma = SV.default_gamma(X)
-    s = SV.fit(X, y, kernel=kernel, C=1.0, gamma=gamma, max_epochs=200)[-1]
-    ref = SVC(C=1.0, kernel=kernel, gamma=gamma).fit(X, y)
+    s = SV.fit(X, y, kernel=kernel, C=1.0, gamma=gamma, max_epochs=300, seed=seed)[-1]
+    ref = SVC(C=1.0, kernel=kernel, gamma=gamma, tol=1e-8).fit(X, y)
+    alpha_ref = np.zeros(len(X))
+    alpha_ref[ref.support_] = np.abs(ref.dual_coef_[0])
+    K = SV.kernel_matrix(X, X, kernel, gamma, 3, 1.0)
+    dual_ref = SV._dual_objective(K, alpha_ref, y)
     assert s.converged
-    # SMO stops at tol=1e-3 and libsvm at a tighter tolerance, so the two may disagree on
-    # points sitting almost exactly on the decision boundary -- but on no point clearly
-    # away from it.
-    ref_decision = ref.decision_function(X)
-    clear = np.abs(ref_decision) > 0.1
-    assert clear.mean() > 0.8
-    np.testing.assert_array_equal(np.sign(s.decision[clear]), np.sign(ref_decision[clear]))
+    assert SV._dual_objective(K, s.alpha, y) == pytest.approx(dual_ref, rel=1e-3)
+    assert (np.sign(s.decision) == np.sign(ref.decision_function(X))).mean() >= 0.99
 
 
 def test_backprop_gradients_match_finite_differences():
