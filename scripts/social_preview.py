@@ -65,15 +65,15 @@ def main() -> None:
 
     # Header.
     n_algos = sum(len(algos) for _, algos in CATALOGUE.values())
-    ax.text(0.4, 0.62, "Algorithm Visualisers", fontsize=25, fontweight="bold",
+    ax.text(0.4, 0.5, "Algorithm Visualisers", fontsize=25, fontweight="bold",
              color=INK, ha="left", va="top")
-    ax.text(0.4, 1.28, f"{n_algos} classic ML & CS algorithms, implemented from scratch "
+    ax.text(0.4, 1.12, f"{n_algos} classic ML & CS algorithms, implemented from scratch "
                         "in NumPy and visualized step by step",
             fontsize=12.5, color=INK_SOFT, ha="left", va="top")
 
     # 4x2 grid of category panels.
     n_cols, n_rows = 4, 2
-    margin_x, margin_y_top, margin_y_bottom, gap = 0.4, 1.75, 0.35, 0.28
+    margin_x, margin_y_top, margin_y_bottom, gap = 0.4, 1.6, 0.35, 0.25
     grid_w = 12.8 - 2 * margin_x
     grid_h = 6.4 - margin_y_top - margin_y_bottom
     panel_w = (grid_w - (n_cols - 1) * gap) / n_cols
@@ -94,9 +94,13 @@ def main() -> None:
                  color=color, ha="left", va="top", wrap=True,
                  zorder=3)
 
-        chip_y = py + pad + 0.46
-        chip_h = 0.34
-        chip_gap = 0.09
+        # Size chips so the fullest category (4 algorithms) fits inside its panel;
+        # every panel uses the same chip size so the grid reads as one system.
+        chip_top = pad + 0.46
+        chip_gap = 0.08
+        max_chips = max(len(a) for _, a in CATALOGUE.values())
+        chip_h = min(0.34, (panel_h - chip_top - pad - (max_chips - 1) * chip_gap) / max_chips)
+        chip_y = py + chip_top
         for algo in algos:
             chip_w = panel_w - 2 * (pad + 0.06)
             rounded_rect(ax, px + pad + 0.06, chip_y, chip_w, chip_h, color,

@@ -21,4 +21,4 @@ jobs:
         run: uv sync
 
       - name: Reference checks and page smoke tests
-        run: uv run pytest -q --durations=10
+        run: uv run pytest -v -x --durations=10 -p no:cacheprovider
