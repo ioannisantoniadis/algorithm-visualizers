@@ -15,7 +15,7 @@ uv sync
 uv run streamlit run Home.py
 ```
 
-Open the URL printed in your terminal (usually http://localhost:8501). The sidebar navigation groups every algorithm by category; the home page gives a card-based overview of all 20.
+Open the URL printed in your terminal (usually http://localhost:8501). The sidebar navigation groups every algorithm by category; the home page gives a card-based overview of all 21.
 
 ## What's inside
 
@@ -31,6 +31,16 @@ Open the URL printed in your terminal (usually http://localhost:8501). The sideb
 | **Reinforcement learning** | Q-Learning / SARSA |
 
 Every visualiser follows the same convention: a from-scratch NumPy implementation, a step-by-step or frame-by-frame playback control, and an in-app explanation of what's happening and why the algorithm can fail.
+
+## Tests
+
+```bash
+uv run pytest
+```
+
+`tests/test_reference.py` checks each from-scratch algorithm against an independent reference
+(scikit-learn, numpy, networkx, finite differences, or the textbook equations); `tests/test_pages.py`
+renders every page headless. Both run in CI.
 
 ## Project layout
 
@@ -49,3 +59,7 @@ algorithm-visualizers/
 ## Design system
 
 Every page shares one visual identity: an indigo/teal palette, Inter typeface, bordered card layout for parameter groups and charts, and a matching Plotly theme. `.streamlit/config.toml` and each page's chart palette are the source of truth — kept identical across every algorithm.
+
+## License
+
+MIT License. See [`LICENSE`](LICENSE).

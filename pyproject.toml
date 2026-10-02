@@ -8,3 +8,14 @@ dependencies = [
     "plotly>=5.22",
     "streamlit>=1.50",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "scikit-learn>=1.5",
+    "scipy>=1.13",
+    "networkx>=3.3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

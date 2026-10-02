@@ -13,17 +13,10 @@ home, instead of many separate repos.
 - **Owner's GitHub profile links here**: `ioannisantoniadis/ioannisantoniadis`
   README, under "Selected GitHub repositories"
 
-> **Known stale copy** (not yet fixed — cheap to fix, just hasn't been
-> touched): `Home.py`'s hero `st.title(...)` and the `st.caption(...)` right
-> below it still hardcode **"20 classic algorithms"**, while the hero-meta
-> line directly underneath computes the real count dynamically from
-> `CATALOGUE` and correctly shows **"21 algorithms across 8 categories"** —
-> i.e. the home page currently contradicts itself within a few lines.
-> `README.md`'s intro line and `pyproject.toml`'s `description` also still
-> say "20". All of this dates to the Particle Filter page being added
-> (`a057990`) without a copy pass. Fix by either updating the three hardcoded
-> "20"s to "21", or better, deriving the hero copy from `len(CATALOGUE)`
-> the way the meta line already does.
+> **Algorithm count**: `Home.py` derives every count it displays from
+> `CATALOGUE` (`n_algos`), so adding a page needs no copy pass there. The
+> README, `pyproject.toml` description, GitHub description and the profile
+> README still state the count (21) by hand — update them when adding a page.
 
 ## How this repo came to exist (short version)
 
@@ -94,9 +87,13 @@ match the page title or the `apps/` filename 1:1 — e.g. `gmmviz/` ↔
 `apps/gmm.py` ↔ "Gaussian Mixture (EM)", `tsneviz/` ↔ `apps/tsne.py`,
 `umapviz/` ↔ `apps/umap.py`. Check `Home.py`'s `CATALOGUE` dict for the
 authoritative module-path → title mapping, don't assume from the directory
-name.) No `tests/` directory and no CI config exist in this repo — there is
-no automated test suite; correctness was established via the one-time
-reviews described above, not via a regression suite that runs on every push.
+name.) `tests/` holds the regression suite, run by `.github/workflows/ci.yml`
+on every push: `test_reference.py` checks 12 algorithms against independent
+references (scikit-learn, numpy, networkx, finite differences, textbook
+equations) and `test_pages.py` renders all 21 pages headless through
+`Home.py`'s navigation (never run a page file directly: `apps/attention.py`
+would shadow the `attention` package). Reference libraries are dev-only
+(`[dependency-groups] dev`); the app itself stays NumPy-only.
 
 **Critical convention — session-state namespacing.** `st.session_state` is
 shared across *every* page in one Streamlit session (that's how
