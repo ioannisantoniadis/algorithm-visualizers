@@ -131,8 +131,13 @@ def test_smo_svm_agrees_with_libsvm(gen, kernel):
     s = SV.fit(X, y, kernel=kernel, C=1.0, gamma=gamma, max_epochs=200)[-1]
     ref = SVC(C=1.0, kernel=kernel, gamma=gamma).fit(X, y)
     assert s.converged
-    # SMO stops at tol=1e-3, libsvm tighter: predictions agree, the dual differs slightly.
-    assert (np.sign(s.decision) == np.sign(ref.decision_function(X))).mean() >= 0.99
+    # SMO stops at tol=1e-3 and libsvm at a tighter tolerance, so the two may disagree on
+    # points sitting almost exactly on the decision boundary -- but on no point clearly
+    # away from it.
+    ref_decision = ref.decision_function(X)
+    clear = np.abs(ref_decision) > 0.1
+    assert clear.mean() > 0.8
+    np.testing.assert_array_equal(np.sign(s.decision[clear]), np.sign(ref_decision[clear]))
 
 
 def test_backprop_gradients_match_finite_differences():
