@@ -184,7 +184,11 @@ def test_kalman_filter_matches_textbook_equations():
 
 
 def test_metropolis_hastings_recovers_the_gaussian_target():
-    chain = MC.run_mcmc("gaussian", n_steps=60_000, proposal_sigma=1.5, seed=0)[-1].chain[5_000:]
+    # run_mcmc keeps a per-step snapshot of the whole chain for playback (quadratic
+    # memory), so pool many short independent chains instead of one very long one.
+    chains = [MC.run_mcmc("gaussian", n_steps=3_000, proposal_sigma=1.5, seed=s)[-1].chain[500:]
+              for s in range(20)]
+    samples = np.concatenate(chains)
     rho, sx, sy = 0.85, 1.8, 1.0  # mcmc/data.py _log_gaussian defaults
     target = np.array([[sx**2, rho * sx * sy], [rho * sx * sy, sy**2]])
-    np.testing.assert_allclose(np.cov(chain.T), target, rtol=0.1, atol=0.05)
+    np.testing.assert_allclose(np.cov(samples.T), target, rtol=0.1, atol=0.05)

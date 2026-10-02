@@ -21,4 +21,6 @@ jobs:
         run: uv sync
 
       - name: Reference checks and page smoke tests
-        run: uv run pytest -q --durations=10
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: uv run pytest -v --durations=15 --timeout=240
